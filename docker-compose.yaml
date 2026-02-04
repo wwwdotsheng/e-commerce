@@ -1,0 +1,93 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    container_name: golang-app
+    restart: always
+    volumes:
+      - .:/app
+      - ./configs/config.yaml:/etc/app/config.yaml:ro
+    ports:
+      - "443:443"
+    networks:
+      - backend_net
+    depends_on:
+      - postgres-dev
+      - redis
+    command: air -c .air.toml
+  postgres-dev:
+    image: harbor.local/dockerhub/postgres:15
+    container_name: postgres-dev
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - TZ=Asia/Shanghai
+      - PGTZ=Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+  redis:
+    image: harbor.local/dockerhub/redis:alpine3.22
+    container_name: redis-dev
+    restart: always
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - backend_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+  loki:
+    image: harbor.local/dockerhub/grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml
+      - ./data/loki-data:/tmp/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitor_net
+  promtail:
+    image: harbor.local/dockerhub/grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./logs:/var/log
+      - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
+      - ./data/promtail-positions:/tmp
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - monitor_net
+  grafana:
+    image: harbor.local/dockerhub/grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+    networks:
+      - monitor_net
+      - backend_net
+networks:
+  backend_net:
+    driver: bridge
+  monitor_net:
+    driver: bridge

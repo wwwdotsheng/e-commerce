@@ -1,0 +1,37 @@
+app:
+  name: "app"
+  port: 443
+  env: ""
+  ssl: true
+  ssl_crt_path: "./configs/certs/env-1.crt"
+  ssl_key_path: "./configs/certs/env-1.key"
+
+database:
+  host: "postgres-dev"
+  port: 5432
+  user: "postgres"
+  password: "postgres"
+  db_name: "postgres"
+  ssl_mode: disable
+  max_idle_conns: 100
+  max_open_conns: 100
+  conn_max_lifetime: 10
+  time_zone: "Asia/Shanghai"
+
+redis:
+  host: "redis"
+  port: 6379
+  password:
+  db: 0
+  pool_size: 10
+
+log:
+  level: 0
+  filename: "./logs/app.log"
+  max_size: 100
+  max_backups: 3
+  max_age: 28
+
+auth:
+  access_token_expire: 15m
+  refresh_token_expire: 168h

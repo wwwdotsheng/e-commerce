@@ -1,0 +1,9 @@
+.idea/
+data/
+logs/
+tmp/
+
+configs/certs/*.crt
+configs/certs/*.key
+
+main
