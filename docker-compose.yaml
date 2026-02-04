@@ -42,7 +42,7 @@ services:
     container_name: redis-dev
     restart: always
     ports:
-      - "${REDIS_PORT}:6379"
+      - "6379:6379"
     volumes:
       - ./data/redis:/data
     networks:
