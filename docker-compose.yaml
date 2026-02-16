@@ -53,7 +53,7 @@ services:
           cpus: '2.0'
           memory: 4G
   prometheus:
-    image: harbor.local/dockerhub/prom/prometheus
+    image: harbor.local/dockerhub/prom/prometheus:v3.9.1
     container_name: prometheus
     ports:
       - "9090:9090"
@@ -78,7 +78,7 @@ services:
     networks:
       - monitor_net
   loki:
-    image: harbor.local/dockerhub/grafana/loki:latest
+    image: harbor.local/dockerhub/grafana/loki:3.6.4
     container_name: loki
     ports:
       - "3100:3100"
@@ -89,7 +89,7 @@ services:
     networks:
       - monitor_net
   promtail:
-    image: harbor.local/dockerhub/grafana/promtail:latest
+    image: harbor.local/dockerhub/grafana/promtail:3.6.4
     container_name: promtail
     volumes:
       - ./logs:/var/log
@@ -99,7 +99,7 @@ services:
     networks:
       - monitor_net
   grafana:
-    image: harbor.local/dockerhub/grafana/grafana:latest
+    image: harbor.local/dockerhub/grafana/grafana:12.3.2
     container_name: grafana
     ports:
       - "3000:3000"
