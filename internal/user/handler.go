@@ -8,6 +8,9 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 )
 
@@ -33,6 +36,9 @@ func NewHandler(userSvc *Service, authSvc *auth.Service) *Handler {
 
 func (h *Handler) register(c *gin.Context) {
 	ctx := c.Request.Context()
+	tracer := otel.Tracer("user-handler")
+	ctx, span := tracer.Start(ctx, "RegisterOperation")
+	defer span.End()
 	logger := clog.L(ctx)
 
 	var registerDTO RegisterDTO
@@ -41,6 +47,11 @@ func (h *Handler) register(c *gin.Context) {
 		return
 	}
 
+	span.SetAttributes(
+		attribute.String("user.email", registerDTO.Email),
+		attribute.String("user.username", registerDTO.UserName),
+	)
+
 	err := h.userSvc.register(ctx, &RegisterInput{
 		UserName: registerDTO.UserName,
 		Email:    registerDTO.Email,
@@ -48,6 +59,9 @@ func (h *Handler) register(c *gin.Context) {
 	})
 
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+
 		if errors.Is(err, svcUserNameRegisteredErr) {
 			logger.Warn("用户名已被注册")
 			app.Fail(c, http.StatusBadRequest, nil, "用户名已被注册")
@@ -61,7 +75,8 @@ func (h *Handler) register(c *gin.Context) {
 		return
 	}
 
-	logger.Info("用户注册成功")
+	span.SetStatus(codes.Ok, "registered")
+	logger.Info("用户注册成功", zap.String("email", registerDTO.Email))
 	app.Success(c, nil)
 }
 

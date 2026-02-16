@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,7 +21,8 @@ type LoginInput struct {
 }
 
 type Service struct {
-	repo *Repository
+	repo    *Repository
+	metrics *Metrics
 }
 
 var (
@@ -30,12 +32,24 @@ var (
 	svcPasswordVerifyFailErr = errors.New("password verify fail")
 )
 
-func NewService(repository *Repository) *Service {
-	return &Service{repo: repository}
+func NewService(repository *Repository, metrics *Metrics) *Service {
+	return &Service{repo: repository, metrics: metrics}
 }
 
-func (svc *Service) register(ctx context.Context, input *RegisterInput) error {
+func (svc *Service) register(ctx context.Context, input *RegisterInput) (err error) {
+	var errCode = MetErrCodeInternal
+	defer func() {
+		if err != nil {
+			svc.metrics.AddUserRegistrationTotal(ctx, MetRegStatusFail, errCode)
+		} else {
+			svc.metrics.AddUserRegistrationTotal(ctx, MetRegStatusSuccess, MetErrCodeNone)
+		}
+	}()
+
+	_, span := otel.Tracer("user-service").Start(ctx, "BcryptHash")
 	bytes, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	span.End()
+
 	if err != nil {
 		return fmt.Errorf("password hash failed: %w", err)
 	}
@@ -48,8 +62,10 @@ func (svc *Service) register(ctx context.Context, input *RegisterInput) error {
 
 	if err != nil {
 		if errors.Is(err, dbUserNameAlreadyExists) {
+			errCode = MetErrCodeUserRegistered
 			return svcUserNameRegisteredErr
 		} else if errors.Is(err, dbEmailAlreadyExists) {
+			errCode = MetErrCodeEmailRegistered
 			return svcEmailRegisteredErr
 		}
 		return fmt.Errorf("register error: %w", err)

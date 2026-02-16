@@ -1,0 +1,40 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3200
+  grpc_server_max_recv_msg_size: 67108864
+  grpc_server_max_send_msg_size: 67108864
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+  trace_idle_period: 10s
+  max_block_duration: 1m
+
+querier:
+  frontend_worker:
+    grpc_client_config:
+      max_send_msg_size: 67108864
+      max_recv_msg_size: 67108864
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /tmp/tempo/traces
+    wal:
+      path: /tmp/tempo/wal
+
+overrides:
+  metrics_generator_processors: [ ]

@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 )
 
@@ -24,14 +25,21 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
 
+	otelShutdown, err := setupOTelSDK(ctx)
+	if err != nil {
+		cancel()
+		return ctx, nil, nil, fmt.Errorf("otel sdk初始化失败：%w", err)
+	}
+
 	// --- 日志初始化
 	logger := clog.Init(conf.Log)
-	ctx = clog.WithLogger(ctx, logger)
-	logger.Info("日志系统初始化完毕")
 
 	stop := func() {
-		cancel()
+		if err = otelShutdown(context.Background()); err != nil {
+			fmt.Printf("otel shutdown error: %v\n", err)
+		}
 		clog.Close(logger)
+		cancel()
 	}
 
 	return ctx, stop, conf, nil
@@ -40,6 +48,7 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 func Run(ctx context.Context, config config.AppConfig) {
 	var err error
 
+	mp := otel.GetMeterProvider()
 	logger := clog.L(ctx)
 
 	// --- 数据库初始化
@@ -65,13 +74,16 @@ func Run(ctx context.Context, config config.AppConfig) {
 		panic("执行SetTrustedProxies产生错误")
 	}
 
-	r.Use(middleware.TraceRequest(ctx))
+	r.Use(middleware.TraceMiddleware("e-commerce"))
+	r.Use(middleware.RequestLogMiddleware())
 
 	api := r.Group("/api")
 
 	v1 := api.Group("/v1")
 	{
-		user.RegisterRouters(v1, authSvc, authMiddleware, db)
+		// TODO userMeter 初始化位置？是否在RegisterRouters 里初始化？
+		userMeter := mp.Meter("user_api")
+		user.RegisterRouters(v1, authSvc, authMiddleware, db, userMeter)
 	}
 
 	// --- 服务启动

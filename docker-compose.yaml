@@ -12,7 +12,7 @@ services:
     ports:
       - "443:443"
     networks:
-      - backend_net
+      - monitor_net
     depends_on:
       - postgres-dev
       - redis
@@ -31,7 +31,7 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     networks:
-      - backend_net
+      - monitor_net
     deploy:
       resources:
         limits:
@@ -46,12 +46,37 @@ services:
     volumes:
       - ./data/redis:/data
     networks:
-      - backend_net
+      - monitor_net
     deploy:
       resources:
         limits:
           cpus: '2.0'
           memory: 4G
+  prometheus:
+    image: harbor.local/dockerhub/prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-otlp-receiver"
+    networks:
+      - monitor_net
+  tempo:
+    image: harbor.local/dockerhub/grafana/tempo:2.10.0
+    container_name: tempo
+    command:
+      - "-config.file=/etc/tempo.yaml"
+    volumes:
+      - ./configs/tempo.yaml:/etc/tempo.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "3200:3200"
+    networks:
+      - monitor_net
   loki:
     image: harbor.local/dockerhub/grafana/loki:latest
     container_name: loki
@@ -85,9 +110,6 @@ services:
       - ./data/grafana:/var/lib/grafana
     networks:
       - monitor_net
-      - backend_net
 networks:
-  backend_net:
-    driver: bridge
   monitor_net:
     driver: bridge
