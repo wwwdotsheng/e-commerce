@@ -3,16 +3,12 @@ package app
 import (
 	"context"
 	"errors"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -64,15 +60,6 @@ func setupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 	shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
 	otel.SetMeterProvider(meterProvider)
 
-	// 初始化日志提供者。
-	loggerProvider, err := newLoggerProvider()
-	if err != nil {
-		handleErr(err)
-		return shutdown, err
-	}
-	shutdownFuncs = append(shutdownFuncs, loggerProvider.Shutdown)
-	global.SetLoggerProvider(loggerProvider)
-
 	return shutdown, err
 }
 
@@ -102,6 +89,10 @@ func newTracerProvider() (*trace.TracerProvider, error) {
 		),
 	)
 
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建 TracerProvider
 	tracerProvider := trace.NewTracerProvider(
 		trace.WithBatcher(traceExporter),
@@ -130,20 +121,4 @@ func newMeterProvider() (*metric.MeterProvider, error) {
 	)
 
 	return meterProvider, nil
-}
-
-func newLoggerProvider() (*log.LoggerProvider, error) {
-	file, _ := os.Create("log.log")
-	logExporter, err := stdoutlog.New(
-		stdoutlog.WithWriter(file),
-		stdoutlog.WithPrettyPrint(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	loggerProvider := log.NewLoggerProvider(
-		log.WithProcessor(log.NewBatchProcessor(logExporter)),
-	)
-	return loggerProvider, nil
 }
