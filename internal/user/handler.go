@@ -48,7 +48,7 @@ func (h *Handler) register(c *gin.Context) {
 	}
 
 	span.SetAttributes(
-		attribute.String("user.email", registerDTO.Email),
+		attribute.Bool("user.email", registerDTO.Email != ""),
 		attribute.String("user.username", registerDTO.UserName),
 	)
 
@@ -76,7 +76,7 @@ func (h *Handler) register(c *gin.Context) {
 	}
 
 	span.SetStatus(codes.Ok, "registered")
-	logger.Info("用户注册成功", zap.String("email", registerDTO.Email))
+	logger.Info("用户注册成功")
 	app.Success(c, nil)
 }
 
