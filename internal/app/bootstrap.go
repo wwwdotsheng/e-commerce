@@ -33,6 +33,7 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 
 	// --- 日志初始化
 	logger := clog.Init(conf.Log)
+	ctx = clog.WithLogger(ctx, logger)
 
 	stop := func() {
 		if err = otelShutdown(context.Background()); err != nil {
@@ -74,6 +75,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 		panic("执行SetTrustedProxies产生错误")
 	}
 
+	r.Use(middleware.InjectLoggerMiddleware(logger))
 	r.Use(middleware.TraceMiddleware("e-commerce"))
 	r.Use(middleware.RequestLogMiddleware())
 
