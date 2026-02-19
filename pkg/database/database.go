@@ -5,6 +5,7 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/pkg/clog"
 	"fmt"
+	"gorm.io/plugin/opentelemetry/tracing"
 
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
@@ -23,6 +24,9 @@ func Init(ctx context.Context, config config.DatabaseSection) *gorm.DB {
 	if err != nil {
 		logger.Error("连接数据库失败", zap.Error(err))
 		panic("连接数据库失败")
+	}
+	if err := db.Use(tracing.NewPlugin()); err != nil {
+		panic(err)
 	}
 
 	logger.Info("连接数据库成功")
