@@ -48,11 +48,13 @@ func (svc *Service) register(ctx context.Context, input *RegisterInput) (err err
 
 	_, span := otel.Tracer("user-service").Start(ctx, "BcryptHash")
 	bytes, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	span.End()
 
 	if err != nil {
+		span.RecordError(err)
+		span.End()
 		return fmt.Errorf("password hash failed: %w", err)
 	}
+	span.End()
 
 	err = svc.repo.createUser(ctx, &User{
 		Email:    input.Email,
