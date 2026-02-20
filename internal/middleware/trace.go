@@ -30,7 +30,7 @@ func RequestLogMiddleware() gin.HandlerFunc {
 		route := c.FullPath()
 		// 当出现404的情况
 		if route == "" {
-			route = "unknow"
+			route = "unknown"
 		}
 		query := c.Request.URL.RawQuery
 
