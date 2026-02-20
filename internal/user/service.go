@@ -36,7 +36,7 @@ func NewService(repository *Repository, metrics *Metrics) *Service {
 	return &Service{repo: repository, metrics: metrics}
 }
 
-func (svc *Service) register(ctx context.Context, input *RegisterInput) (err error) {
+func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err error) {
 	var errCode = MetErrCodeInternal
 	defer func() {
 		if err != nil {
@@ -56,7 +56,7 @@ func (svc *Service) register(ctx context.Context, input *RegisterInput) (err err
 	}
 	span.End()
 
-	err = svc.repo.createUser(ctx, &User{
+	err = svc.repo.CreateUser(ctx, &User{
 		Email:    input.Email,
 		Password: string(bytes),
 		UserName: input.UserName,
@@ -76,8 +76,8 @@ func (svc *Service) register(ctx context.Context, input *RegisterInput) (err err
 	return nil
 }
 
-func (svc *Service) login(ctx context.Context, input *LoginInput) (*User, error) {
-	user, err := svc.repo.findUserByEmail(ctx, input.Email)
+func (svc *Service) Login(ctx context.Context, input *LoginInput) (*User, error) {
+	user, err := svc.repo.FindUserByEmail(ctx, input.Email)
 	if err != nil {
 		if errors.Is(err, dbNotFoundUser) {
 			return nil, svcNotFoundUserErr

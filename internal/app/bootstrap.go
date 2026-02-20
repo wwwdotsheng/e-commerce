@@ -83,9 +83,26 @@ func Run(ctx context.Context, config config.AppConfig) {
 
 	v1 := api.Group("/v1")
 	{
-		// TODO userMeter 初始化位置？是否在RegisterRouters 里初始化？
 		userMeter := mp.Meter("user_api")
-		user.RegisterRouters(v1, authSvc, authMiddleware, db, userMeter)
+		metrics, err := user.NewMetrics(userMeter)
+		// TODO 错误处理如何编写？直接panic？
+		if err != nil {
+			panic(err)
+		}
+
+		repo := user.NewRepository(db)
+		svc := user.NewService(repo, metrics)
+		h := user.NewHandler(svc, authSvc)
+		tg := v1.Group("/user")
+		{
+			tg.POST("/register", h.Register)
+			tg.POST("/login", h.Login)
+		}
+
+		tg.Use(authMiddleware)
+		{
+			tg.GET("/good")
+		}
 	}
 
 	// --- 服务启动

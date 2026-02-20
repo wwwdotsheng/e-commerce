@@ -34,7 +34,7 @@ func NewHandler(userSvc *Service, authSvc *auth.Service) *Handler {
 	return &Handler{userSvc: userSvc, authSvc: authSvc}
 }
 
-func (h *Handler) register(c *gin.Context) {
+func (h *Handler) Register(c *gin.Context) {
 	ctx := c.Request.Context()
 	tracer := otel.Tracer("user-handler")
 	ctx, span := tracer.Start(ctx, "RegisterOperation")
@@ -52,7 +52,7 @@ func (h *Handler) register(c *gin.Context) {
 		attribute.String("user.username", registerDTO.UserName),
 	)
 
-	err := h.userSvc.register(ctx, &RegisterInput{
+	err := h.userSvc.Register(ctx, &RegisterInput{
 		UserName: registerDTO.UserName,
 		Email:    registerDTO.Email,
 		Password: registerDTO.Password,
@@ -80,7 +80,7 @@ func (h *Handler) register(c *gin.Context) {
 	app.Success(c, nil)
 }
 
-func (h *Handler) login(c *gin.Context) {
+func (h *Handler) Login(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger := clog.L(ctx)
 
@@ -90,7 +90,7 @@ func (h *Handler) login(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userSvc.login(ctx, &loginInput)
+	user, err := h.userSvc.Login(ctx, &loginInput)
 	if err != nil {
 		if errors.Is(err, svcNotFoundUserErr) || errors.Is(err, svcPasswordVerifyFailErr) {
 			app.Fail(c, http.StatusBadRequest, nil, "账号或密码错误")
