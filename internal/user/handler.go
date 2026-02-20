@@ -49,7 +49,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	span.SetAttributes(
 		attribute.Bool("user.email", registerDTO.Email != ""),
-		attribute.String("user.username", registerDTO.UserName),
+		attribute.Bool("user.username", registerDTO.UserName != ""),
 	)
 
 	err := h.userSvc.Register(ctx, &RegisterInput{
