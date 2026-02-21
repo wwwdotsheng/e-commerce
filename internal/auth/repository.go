@@ -4,9 +4,11 @@ import (
 	"context"
 	"e-commerce/internal/app/identity"
 	"e-commerce/internal/config"
+	"e-commerce/internal/model"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -14,6 +16,7 @@ import (
 
 var (
 	rdbNotFoundAccessToken = errors.New("not found access token")
+	dbNotFoundUser         = errors.New("not found user")
 )
 
 type TokenPair struct {
@@ -47,12 +50,13 @@ var createSessionScript = redis.NewScript(`
 `)
 
 type Repository struct {
+	db     *gorm.DB
 	rdb    *redis.Client
 	config *config.AuthSection
 }
 
-func NewRepository(rdb *redis.Client, config *config.AuthSection) *Repository {
-	return &Repository{rdb: rdb, config: config}
+func NewRepository(db *gorm.DB, rdb *redis.Client, config *config.AuthSection) *Repository {
+	return &Repository{db: db, rdb: rdb, config: config}
 }
 
 func genAccessTokenKey(accessToken string) string { return fmt.Sprintf("%s%s", atPrefix, accessToken) }
@@ -143,4 +147,17 @@ func (repo *Repository) createSession(ctx context.Context, accountId uint) (*Tok
 	}
 
 	return &tokenPair, nil
+}
+
+func (repo *Repository) FindUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	var user model.User
+	result := repo.db.WithContext(ctx).Where("email = ?", email).First(&user)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, dbNotFoundUser
+		}
+		return nil, fmt.Errorf("execute query error %w", result.Error)
+	}
+
+	return &user, nil
 }

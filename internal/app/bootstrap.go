@@ -5,6 +5,7 @@ import (
 	"e-commerce/internal/auth"
 	"e-commerce/internal/config"
 	"e-commerce/internal/middleware"
+	"e-commerce/internal/model"
 	"e-commerce/internal/user"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/database"
@@ -54,7 +55,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 
 	// --- 数据库初始化
 	db := database.Init(ctx, config.Database)
-	err = db.AutoMigrate(&user.User{})
+	err = db.AutoMigrate(&model.User{})
 	if err != nil {
 		logger.Error("数据库AutoMigrate失败", zap.Error(err))
 		panic("数据库AutoMigrate失败")
@@ -64,7 +65,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 	rdb := redis.Init(ctx, config.Redis)
 
 	// --- 路由初始化
-	authRepo := auth.NewRepository(rdb, &config.Auth)
+	authRepo := auth.NewRepository(db, rdb, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
 	authMiddleware := middleware.Auth(authSvc)
 
@@ -83,6 +84,13 @@ func Run(ctx context.Context, config config.AppConfig) {
 
 	v1 := api.Group("/v1")
 	{
+		h := auth.NewHandler(authSvc)
+		tg := v1.Group("/auth")
+		{
+			tg.POST("/login", h.Login)
+		}
+	}
+	{
 		userMeter := mp.Meter("user_api")
 		metrics, err := user.NewMetrics(userMeter)
 		// TODO 错误处理如何编写？直接panic？
@@ -96,9 +104,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 		tg := v1.Group("/user")
 		{
 			tg.POST("/register", h.Register)
-			tg.POST("/login", h.Login)
 		}
-
 		tg.Use(authMiddleware)
 		{
 			tg.GET("/good")

@@ -4,12 +4,24 @@ import (
 	"context"
 	"e-commerce/internal/app/identity"
 	"e-commerce/internal/config"
+	"e-commerce/internal/model"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
 	NotPermission = errors.New("not permission")
 )
+
+var (
+	svcNotFoundUserErr       = errors.New("not found user")
+	svcPasswordVerifyFailErr = errors.New("password verify fail")
+)
+
+type LoginInput struct {
+	Email    string
+	Password string
+}
 
 type Service struct {
 	repo   *Repository
@@ -40,4 +52,21 @@ func (svc *Service) Verify(ctx context.Context, accessToken string) (*identity.A
 	}
 
 	return accountInfo, nil
+}
+
+func (svc *Service) Login(ctx context.Context, input *LoginInput) (*model.User, error) {
+	user, err := svc.repo.FindUserByEmail(ctx, input.Email)
+	if err != nil {
+		if errors.Is(err, dbNotFoundUser) {
+			return nil, svcNotFoundUserErr
+		}
+		return nil, err
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
+	if err != nil {
+		return nil, svcPasswordVerifyFailErr
+	}
+
+	return user, nil
 }

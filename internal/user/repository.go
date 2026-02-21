@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"e-commerce/internal/model"
 	"errors"
 	"fmt"
 
@@ -13,12 +14,11 @@ import (
 var (
 	dbEmailAlreadyExists    = errors.New("email already exists")
 	dbUserNameAlreadyExists = errors.New("user_name already exists")
-	dbNotFoundUser          = errors.New("not found user")
 )
 
 var constraintMap = map[string]error{
-	ConstraintUserEmail: dbEmailAlreadyExists,
-	ConstraintUserName:  dbUserNameAlreadyExists,
+	model.ConstraintUserEmail: dbEmailAlreadyExists,
+	model.ConstraintUserName:  dbUserNameAlreadyExists,
 }
 
 type Repository struct {
@@ -29,7 +29,7 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{db}
 }
 
-func (repo *Repository) CreateUser(ctx context.Context, user *User) error {
+func (repo *Repository) CreateUser(ctx context.Context, user *model.User) error {
 	result := repo.db.WithContext(ctx).Create(user)
 	if result.Error != nil {
 		var pgErr *pgconn.PgError
@@ -42,17 +42,4 @@ func (repo *Repository) CreateUser(ctx context.Context, user *User) error {
 	}
 
 	return nil
-}
-
-func (repo *Repository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
-	var user User
-	result := repo.db.WithContext(ctx).Where("email = ?", email).First(&user)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, dbNotFoundUser
-		}
-		return nil, fmt.Errorf("execute query error %w", result.Error)
-	}
-
-	return &user, nil
 }

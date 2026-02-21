@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"e-commerce/internal/model"
 	"errors"
 	"fmt"
 
@@ -15,11 +16,6 @@ type RegisterInput struct {
 	Password string
 }
 
-type LoginInput struct {
-	Email    string
-	Password string
-}
-
 type Service struct {
 	repo    *Repository
 	metrics *Metrics
@@ -28,8 +24,6 @@ type Service struct {
 var (
 	svcUserNameRegisteredErr = errors.New("username registered")
 	svcEmailRegisteredErr    = errors.New("email registered")
-	svcNotFoundUserErr       = errors.New("not found user")
-	svcPasswordVerifyFailErr = errors.New("password verify fail")
 )
 
 func NewService(repository *Repository, metrics *Metrics) *Service {
@@ -56,7 +50,7 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	}
 	span.End()
 
-	err = svc.repo.CreateUser(ctx, &User{
+	err = svc.repo.CreateUser(ctx, &model.User{
 		Email:    input.Email,
 		Password: string(bytes),
 		UserName: input.UserName,
@@ -74,21 +68,4 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	}
 
 	return nil
-}
-
-func (svc *Service) Login(ctx context.Context, input *LoginInput) (*User, error) {
-	user, err := svc.repo.FindUserByEmail(ctx, input.Email)
-	if err != nil {
-		if errors.Is(err, dbNotFoundUser) {
-			return nil, svcNotFoundUserErr
-		}
-		return nil, err
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
-	if err != nil {
-		return nil, svcPasswordVerifyFailErr
-	}
-
-	return user, nil
 }
