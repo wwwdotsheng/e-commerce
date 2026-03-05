@@ -67,7 +67,8 @@ func Run(ctx context.Context, config config.AppConfig) {
 	// --- 路由初始化
 	authRepo := auth.NewRepository(db, rdb, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
-	authMiddleware := middleware.Auth(authSvc)
+	accessTokenAuthMiddleware := middleware.AccessTokenAuth(authSvc)
+	refreshTokenAuthMiddleware := middleware.RefreshTokenAuth(authSvc)
 
 	r := gin.Default()
 	err = r.SetTrustedProxies([]string{})
@@ -85,9 +86,20 @@ func Run(ctx context.Context, config config.AppConfig) {
 	v1 := api.Group("/v1")
 	{
 		h := auth.NewHandler(authSvc)
-		tg := v1.Group("/auth")
+		authGroup0 := v1.Group("/auth")
 		{
-			tg.POST("/login", h.Login)
+			authGroup0.POST("/login", h.Login)
+		}
+		authGroup1 := v1.Group("/auth")
+		authGroup1.Use(accessTokenAuthMiddleware)
+		{
+			authGroup1.POST("/fetch-refresh-token", h.FetchRefreshToken)
+			authGroup1.POST("/logout", h.Logout)
+		}
+		authGroup2 := v1.Group("/auth")
+		authGroup2.Use(refreshTokenAuthMiddleware)
+		{
+			authGroup2.POST("/fetch-access-token", h.FetchAccessToken)
 		}
 	}
 	{
@@ -105,7 +117,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 		{
 			tg.POST("/register", h.Register)
 		}
-		tg.Use(authMiddleware)
+		tg.Use(accessTokenAuthMiddleware)
 		{
 			tg.GET("/good")
 		}

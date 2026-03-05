@@ -12,13 +12,13 @@ import (
 )
 
 var (
-	dbEmailAlreadyExists    = errors.New("email already exists")
-	dbUserNameAlreadyExists = errors.New("user_name already exists")
+	repoErrEmailAlreadyExists    = errors.New("email already exists")
+	repoErrUserNameAlreadyExists = errors.New("user_name already exists")
 )
 
 var constraintMap = map[string]error{
-	model.ConstraintUserEmail: dbEmailAlreadyExists,
-	model.ConstraintUserName:  dbUserNameAlreadyExists,
+	model.ConstraintUserEmail: repoErrEmailAlreadyExists,
+	model.ConstraintUserName:  repoErrUserNameAlreadyExists,
 }
 
 type Repository struct {

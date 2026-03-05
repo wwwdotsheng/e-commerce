@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"e-commerce/internal/model"
+	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
 
@@ -57,14 +58,14 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	})
 
 	if err != nil {
-		if errors.Is(err, dbUserNameAlreadyExists) {
+		if errors.Is(err, repoErrUserNameAlreadyExists) {
 			errCode = MetErrCodeUserRegistered
-			return svcUserNameRegisteredErr
-		} else if errors.Is(err, dbEmailAlreadyExists) {
+			return errno.ErrUserNameExisted
+		} else if errors.Is(err, repoErrEmailAlreadyExists) {
 			errCode = MetErrCodeEmailRegistered
-			return svcEmailRegisteredErr
+			return errno.ErrUserEmailExisted
 		}
-		return fmt.Errorf("register error: %w", err)
+		return errno.ErrInternalServer.WithRaw(err)
 	}
 
 	return nil

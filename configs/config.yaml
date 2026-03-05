@@ -1,7 +1,7 @@
 app:
   name: "app"
   port: 443
-  env: ""
+  env: "dev"
   ssl: true
   ssl_crt_path: "./configs/certs/env-1.crt"
   ssl_key_path: "./configs/certs/env-1.key"
@@ -35,3 +35,4 @@ log:
 auth:
   access_token_expire: 15m
   refresh_token_expire: 168h
+  token_secret: "12345678"

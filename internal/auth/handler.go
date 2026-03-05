@@ -1,12 +1,10 @@
 package auth
 
 import (
-	"e-commerce/internal/pkg/app"
-	"e-commerce/pkg/clog"
-	"errors"
+	"e-commerce/internal/app/identity"
+	"e-commerce/pkg/errno"
+	"e-commerce/pkg/res"
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
-	"net/http"
 )
 
 type Handler struct {
@@ -24,31 +22,65 @@ func NewHandler(authSvc *Service) *Handler {
 
 func (h *Handler) Login(c *gin.Context) {
 	ctx := c.Request.Context()
-	logger := clog.L(ctx)
 
 	var loginInput LoginInput
 	if err := c.ShouldBindJSON(&loginInput); err != nil {
-		app.BadRequest(c)
+		res.WriteResponse(c, errno.ErrInvalidParam, nil)
 		return
 	}
 
-	user, err := h.authSvc.Login(ctx, &loginInput)
+	tokenPair, err := h.authSvc.Login(ctx, &loginInput)
+	res.WriteResponse(c, err, tokenPair)
+}
+
+func (h *Handler) FetchAccessToken(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		res.WriteResponse(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+
+	at, err := h.authSvc.fetchAccessToken(ctx, accountInfo)
+	res.WriteResponse(c, err, gin.H{
+		"access_token": at,
+	})
+}
+
+func (h *Handler) FetchRefreshToken(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		res.WriteResponse(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+
+	at, err := h.authSvc.fetchRefreshToken(ctx, accountInfo)
 	if err != nil {
-		if errors.Is(err, svcNotFoundUserErr) || errors.Is(err, svcPasswordVerifyFailErr) {
-			app.Fail(c, http.StatusBadRequest, nil, "账号或密码错误")
-			return
-		}
-		logger.Error("登录出现错误", zap.Error(err))
-		app.InternalError(c)
+		res.WriteResponse(c, errno.ErrInternalServer.WithRaw(err), nil)
 		return
 	}
 
-	tokenPair, err := h.authSvc.CreateSession(ctx, user.ID)
+	res.WriteResponse(c, errno.OK, gin.H{
+		"access_token": at,
+	})
+}
+
+func (h *Handler) Logout(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		res.WriteResponse(c, errno.ErrGetAccountInfo, nil)
+	}
+
+	err := h.authSvc.logout(ctx, accountInfo)
 	if err != nil {
-		logger.Error("创建session时出现问题", zap.Error(err))
-		app.InternalError(c)
+		res.WriteResponse(c, errno.ErrInternalServer.WithRaw(err), nil)
 		return
 	}
 
-	app.Success(c, tokenPair)
+	res.WriteResponse(c, errno.OK, nil)
 }

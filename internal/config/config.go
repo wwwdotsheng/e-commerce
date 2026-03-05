@@ -15,7 +15,7 @@ type AppConfig struct {
 	Database DatabaseSection `mapstructure:"database"`
 	Redis    RedisSection    `mapstructure:"redis"`
 	Log      LogSection      `mapstructure:"log"`
-	Auth     AuthSection     `mapstructure:"identity"`
+	Auth     AuthSection     `mapstructure:"auth"`
 }
 
 type AppSection struct {
@@ -59,6 +59,7 @@ type LogSection struct {
 type AuthSection struct {
 	AccessTokenExpire  time.Duration `mapstructure:"access_token_expire"`
 	RefreshTokenExpire time.Duration `mapstructure:"refresh_token_expire"`
+	TokenSecret        string        `mapstructure:"token_secret"`
 }
 
 func Init() (*AppConfig, error) {
@@ -74,4 +75,8 @@ func Init() (*AppConfig, error) {
 		return nil, err
 	}
 	return Conf, nil
+}
+
+func IsDev() bool {
+	return strings.ToUpper(Conf.App.Env) == "DEV"
 }

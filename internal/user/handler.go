@@ -2,11 +2,9 @@ package user
 
 import (
 	"e-commerce/internal/auth"
-	"e-commerce/internal/pkg/app"
 	"e-commerce/pkg/clog"
-	"errors"
-	"net/http"
-
+	"e-commerce/pkg/errno"
+	"e-commerce/pkg/res"
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -37,7 +35,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	var registerDTO RegisterDTO
 	if err := c.ShouldBindJSON(&registerDTO); err != nil {
-		app.BadRequest(c)
+		res.WriteResponse(c, errno.ErrInvalidParam, nil)
 		return
 	}
 
@@ -55,21 +53,11 @@ func (h *Handler) Register(c *gin.Context) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-
-		if errors.Is(err, svcUserNameRegisteredErr) {
-			logger.Warn("用户名已被注册")
-			app.Fail(c, http.StatusBadRequest, nil, "用户名已被注册")
-			return
-		} else if errors.Is(err, svcEmailRegisteredErr) {
-			logger.Warn("用户邮箱已被注册")
-			app.Fail(c, http.StatusBadRequest, nil, "用户邮箱已被注册")
-			return
-		}
-		app.InternalError(c)
+		res.WriteResponse(c, err, nil)
 		return
 	}
 
 	span.SetStatus(codes.Ok, "registered")
 	logger.Info("用户注册成功")
-	app.Success(c, nil)
+	res.WriteResponse(c, nil, nil)
 }

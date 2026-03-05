@@ -2,51 +2,81 @@ package auth
 
 import (
 	"context"
-	"e-commerce/internal/app/identity"
 	"e-commerce/internal/config"
 	"e-commerce/internal/model"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
 	"time"
-
-	"github.com/go-redis/redis/v8"
 )
 
 var (
-	rdbNotFoundAccessToken = errors.New("not found access token")
-	dbNotFoundUser         = errors.New("not found user")
+	RepoErrSessionNotFound  = errors.New("session not found in redis")
+	RepoErrDatabaseInternal = errors.New("database internal error")
 )
-
-type TokenPair struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
 
 var (
-	atPrefix         = "identity:at"
-	rtPrefix         = "identity:rt"
-	sidContainPrefix = "identity:sid"
-	userSidsPrefix   = "identity:user:sids"
+	sidContainPrefix = "ident:sess"
+	userSidsPrefix   = "ident:u_sess"
 )
 
-// 这里的
+// 创建一个session
 var createSessionScript = redis.NewScript(`
-	local rt_key = KEYS[1]
-	local at_key = KEYS[2]
-	local sid_contain_key = KEYS[3]
-	local user_sid_key = KEYS[4]
+	local sid_contain_key = KEYS[1]
+	local user_sid_key = KEYS[2]
 	
-	redis.call('SET', at_key, ARGV[1], 'EX', tonumber(ARGV[2]))
-	redis.call('SET', rt_key, ARGV[1], 'EX', tonumber(ARGV[3]))
+	local access_token    = ARGV[1]
+    local refresh_token   = ARGV[2]
+    local expire_seconds  = ARGV[3]
+    local session_id      = ARGV[4]
+
+    redis.call("HSET", sid_contain_key, "at", access_token, "rt", refresh_token)
+    redis.call("EXPIRE", sid_contain_key, expire_seconds)
 	
-	redis.call('HSET', sid_contain_key, 'token_pair', ARGV[4])
-	redis.call('EXPIRE', sid_contain_key, tonumber(ARGV[5]))
+	redis.call("SADD", user_sid_key, session_id)
+	local sids = redis.call("SMEMBERS", user_sid_key)
+	if #sids > 5 then
+		for _, sid in ipairs(sids) do
+			if redis.call("EXISTS", "ident:sess:" .. sid) == 0 then
+				redis.call("SREM", user_sid_key, sid)
+			end
+		end
+	end
+	return 1
+`)
+
+var deleteSessionScript = redis.NewScript(`
+	local sid_contain_key = KEYS[1]
+	local user_sid_key = KEYS[2]
+
+	local remove_sid = ARGV[1]
+
+	redis.call("DEL", sid_contain_key)
+	redis.call("SREM", user_sid_key, remove_sid)
+	return 1
+`)
+
+var setAccessTokenScript = redis.NewScript(`
+	local sid_contain_key = KEYS[1]
+
+	local new_access_token = ARGV[1]
 	
-	redis.call('SADD', user_sid_key, ARGV[6])
+	if redis.call("EXISTS", sid_contain_key) == 0 then return 0 end
+	redis.call("HSET", sid_contain_key, "at", new_access_token)
+	return 1
+`)
+var setRefreshTokenScript = redis.NewScript(`
+	local sid_contain_key = KEYS[1]
+
+	local new_refresh_token = ARGV[1]
+	local expire_seconds = ARGV[2]
+
+	if redis.call("EXISTS", sid_contain_key) == 0 then return 0 end
 	
-	return "OK"
+	redis.call("HSET", sid_contain_key, "rt", new_refresh_token)
+	redis.call("EXPIRE", sid_contain_key, expire_seconds)
+	return 1
 `)
 
 type Repository struct {
@@ -59,10 +89,6 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, config *config.AuthSection) *
 	return &Repository{db: db, rdb: rdb, config: config}
 }
 
-func genAccessTokenKey(accessToken string) string { return fmt.Sprintf("%s%s", atPrefix, accessToken) }
-func genRefreshTokenKey(refreshToken string) string {
-	return fmt.Sprintf("%s:%s", rtPrefix, refreshToken)
-}
 func genSidContainKey(sessionId string) string {
 	return fmt.Sprintf("%s:%s", sidContainPrefix, sessionId)
 }
@@ -70,94 +96,89 @@ func genUserSidsKey(accountId uint) string {
 	return fmt.Sprintf("%s:%d", userSidsPrefix, accountId)
 }
 
-// TODO 考虑迁移到 service 层
-func genAccessToken() (string, error)  { return generateRandomString(16) }
-func genRefreshToken() (string, error) { return generateRandomString(24) }
-func genSessionId() (string, error)    { return generateRandomString(24) }
-func generateTokens() (at, rt, sid string, err error) {
-	if at, err = genAccessToken(); err != nil {
-		return
-	}
-	if rt, err = genRefreshToken(); err != nil {
-		return
-	}
-	if sid, err = genSessionId(); err != nil {
-		return
-	}
-	return
-}
-
-// findAccessToken 查找accessToken
-func (repo *Repository) findAccessToken(ctx context.Context, accessToken string) (*identity.AccountInfo, error) {
-	atKey := genAccessTokenKey(accessToken)
-	val, err := repo.rdb.Get(ctx, atKey).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return nil, rdbNotFoundAccessToken
-		}
-		return nil, err
-	}
-
-	var accountInfo identity.AccountInfo
-	err = json.Unmarshal([]byte(val), &accountInfo)
-	if err != nil {
-		return nil, err
-	}
-	return &accountInfo, nil
-}
-
 // createSession 为用户创建一个session(使用lua脚本)
-func (repo *Repository) createSession(ctx context.Context, accountId uint) (*TokenPair, error) {
-	at, rt, sid, err := generateTokens()
-	if err != nil {
-		return nil, err
-	}
-
-	keys := []string{
-		genAccessTokenKey(at),
-		genRefreshTokenKey(rt),
-		genSidContainKey(sid),
-		genUserSidsKey(accountId),
-	}
-
-	accountInfo := identity.AccountInfo{AccountId: accountId, SessionID: sid}
-	accountInfoStr, err := json.Marshal(accountInfo)
-
-	tokenPair := TokenPair{
-		AccessToken:  at,
-		RefreshToken: rt,
-	}
-	tokenPairStr, err := json.Marshal(tokenPair)
-
+func (repo *Repository) createSession(ctx context.Context, accountId uint, sessionId string, accessToken string, refreshToken string, expireSeconds time.Duration) error {
 	cmd := createSessionScript.Run(
 		ctx,
 		repo.rdb,
-		keys,
-		// ARGV
-		accountInfoStr,
-		int(time.Minute/time.Second*30),
-		int(time.Hour/time.Second*24*7),
-		tokenPairStr,
-		int(time.Hour/time.Second*24*7+time.Minute/time.Second*5),
-		sid,
+		[]string{
+			genSidContainKey(sessionId),
+			genUserSidsKey(accountId),
+		},
+		accessToken,
+		refreshToken,
+		int(expireSeconds.Seconds()),
+		sessionId,
 	)
+	return cmd.Err()
+}
 
-	if cmd.Err() != nil {
-		return nil, cmd.Err()
-	}
+func (repo *Repository) getRefreshToken(ctx context.Context, sessionId string) (string, error) {
+	cmd := repo.rdb.HGet(ctx, genSidContainKey(sessionId), "rt")
+	result, err := cmd.Result()
+	return result, err
+}
 
-	return &tokenPair, nil
+func (repo *Repository) getAccessToken(ctx context.Context, sessionId string) (string, error) {
+	cmd := repo.rdb.HGet(ctx, genSidContainKey(sessionId), "at")
+	result, err := cmd.Result()
+	return result, err
 }
 
 func (repo *Repository) FindUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	var user model.User
 	result := repo.db.WithContext(ctx).Where("email = ?", email).First(&user)
-	if result.Error != nil {
-		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-			return nil, dbNotFoundUser
-		}
-		return nil, fmt.Errorf("execute query error %w", result.Error)
-	}
+	return &user, result.Error
+}
 
-	return &user, nil
+func (repo *Repository) SetAccessToken(ctx context.Context, accountId uint, sessionId string, accessToken string) error {
+	cmd := setAccessTokenScript.Run(
+		ctx,
+		repo.rdb,
+		[]string{
+			genSidContainKey(sessionId),
+		},
+		accessToken,
+	)
+	result, err := cmd.Int()
+	if err != nil {
+		return fmt.Errorf("%w: %v", RepoErrDatabaseInternal, cmd.Err())
+	}
+	if result == 0 {
+		return RepoErrSessionNotFound
+	}
+	return nil
+}
+
+func (repo *Repository) SetRefreshToken(ctx context.Context, accountId uint, sessionId string, refreshToken string) error {
+	cmd := setRefreshTokenScript.Run(
+		ctx,
+		repo.rdb,
+		[]string{
+			genSidContainKey(sessionId),
+		},
+		refreshToken,
+		repo.config.RefreshTokenExpire,
+	)
+	result, err := cmd.Int()
+	if err != nil {
+		return fmt.Errorf("%w: %v", RepoErrDatabaseInternal, cmd.Err())
+	}
+	if result == 0 {
+		return RepoErrSessionNotFound
+	}
+	return nil
+}
+
+func (repo *Repository) DelSession(ctx context.Context, accountId uint, sessionId string) error {
+	cmd := deleteSessionScript.Run(
+		ctx,
+		repo.rdb,
+		[]string{
+			genSidContainKey(sessionId),
+			genUserSidsKey(accountId),
+		},
+		sessionId,
+	)
+	return cmd.Err()
 }

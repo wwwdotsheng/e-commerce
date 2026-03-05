@@ -35,7 +35,7 @@ func Init(config config.LogSection) *zap.Logger {
 
 	core := zapcore.NewTee(
 		zapcore.NewCore(jsonEncoder, fileSyncer, zapcore.DebugLevel),
-		zapcore.NewCore(jsonEncoder, consoleSyncer, zapcore.InfoLevel),
+		zapcore.NewCore(jsonEncoder, consoleSyncer, zapcore.DebugLevel),
 	)
 
 	return zap.New(core, zap.AddCaller())
