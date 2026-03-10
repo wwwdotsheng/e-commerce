@@ -167,7 +167,7 @@ func (svc *Service) Login(ctx context.Context, input *LoginInput) (*TokenPair, e
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
 	if err != nil {
-		return nil, svcPasswordVerifyFailErr
+		return nil, errno.ErrUserNotFound
 	}
 
 	sid, err := genSessionId()
