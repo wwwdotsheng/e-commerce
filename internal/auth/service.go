@@ -7,16 +7,12 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"time"
-)
-
-var (
-	svcNotFoundUserErr       = errors.New("not found user")
-	svcPasswordVerifyFailErr = errors.New("password verify fail")
 )
 
 type TokenType string

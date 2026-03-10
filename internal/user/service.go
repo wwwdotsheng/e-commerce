@@ -22,11 +22,6 @@ type Service struct {
 	metrics *Metrics
 }
 
-var (
-	svcUserNameRegisteredErr = errors.New("username registered")
-	svcEmailRegisteredErr    = errors.New("email registered")
-)
-
 func NewService(repository *Repository, metrics *Metrics) *Service {
 	return &Service{repo: repository, metrics: metrics}
 }
