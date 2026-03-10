@@ -1,0 +1,6 @@
+data/
+logs/
+
+.idea/
+.git/
+*.log
