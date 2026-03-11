@@ -21,7 +21,7 @@ import (
 func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	conf, err := config.Init()
+	conf, err := config.Init(configPath)
 	if err != nil {
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
