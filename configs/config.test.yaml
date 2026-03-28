@@ -1,17 +1,17 @@
 app:
   name: "app"
-  port: 443
+  port: 80
   env: "dev"
-  ssl: true
+  ssl: false
   ssl_crt_path: "./configs/certs/env-1.crt"
   ssl_key_path: "./configs/certs/env-1.key"
 
 database:
-  host: "postgres-dev"
+  host: ""
   port: 5432
-  user: "postgres"
-  password: "postgres"
-  db_name: "postgres"
+  user: "test-user"
+  password: "test-password"
+  db_name: "test"
   ssl_mode: disable
   max_idle_conns: 100
   max_open_conns: 100
@@ -38,8 +38,8 @@ auth:
   token_secret: "12345678"
 
 otel:
-  enabled: true
+  enabled: false
   endpoint:
-    trace_endpoint: "tempo:4317"
-    metric_endpoint: "prometheus:9090"
+    trace_endpoint: ""
+    metric_endpoint: ""
   service_name: "e-commerce"

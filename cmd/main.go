@@ -10,7 +10,7 @@ func main() {
 	configPath := flag.String("c", "configs/config.yaml", "path to config file")
 	flag.Parse()
 
-	ctx, stop, conf, err := app.Bootstrap("/etc/app/config.yaml")
+	ctx, stop, conf, err := app.Bootstrap(*configPath)
 	if err != nil {
 		log.Fatalf("应用启动失败：%v", err)
 	}

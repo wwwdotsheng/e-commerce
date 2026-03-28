@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"e-commerce/internal/config"
 	"errors"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 
 // setupOTelSDK 初始化 OpenTelemetry 的管道。
 // 如果没有返回错误, 用户需要确保在之后调用返回的 shutdown 方法进行清理。
-func setupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
+func setupOTelSDK(ctx context.Context, conf config.OtelSection) (func(context.Context) error, error) {
 	var shutdownFuncs []func(context.Context) error
 	var err error
 
@@ -43,7 +44,7 @@ func setupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(prop)
 
 	// 初始化 trace 提供者。
-	tracerProvider, err := newTracerProvider()
+	tracerProvider, err := newTracerProvider(conf)
 	if err != nil {
 		handleErr(err)
 		return shutdown, err
@@ -52,7 +53,7 @@ func setupOTelSDK(ctx context.Context) (func(context.Context) error, error) {
 	otel.SetTracerProvider(tracerProvider)
 
 	// 初始化 Meter 提供者。
-	meterProvider, err := newMeterProvider()
+	meterProvider, err := newMeterProvider(conf)
 	if err != nil {
 		handleErr(err)
 		return shutdown, err
@@ -70,7 +71,10 @@ func newPropagator() propagation.TextMapPropagator {
 	)
 }
 
-func newTracerProvider() (*trace.TracerProvider, error) {
+func newTracerProvider(conf config.OtelSection) (*trace.TracerProvider, error) {
+	if !conf.Enabled {
+		return trace.NewTracerProvider(), nil
+	}
 	ctx := context.Background()
 
 	// 创建 OTLP gRPC 导出器，指向 Tempo 的 4317 端口
@@ -102,11 +106,14 @@ func newTracerProvider() (*trace.TracerProvider, error) {
 	return tracerProvider, nil
 }
 
-func newMeterProvider() (*metric.MeterProvider, error) {
+func newMeterProvider(conf config.OtelSection) (*metric.MeterProvider, error) {
+	if !conf.Enabled {
+		return metric.NewMeterProvider(), nil
+	}
 	ctx := context.Background()
 	metricExporter, err := otlpmetrichttp.New(
 		ctx,
-		otlpmetrichttp.WithEndpoint("prometheus:9090"),
+		otlpmetrichttp.WithEndpoint(conf.Endpoint.Metric),
 		otlpmetrichttp.WithInsecure(),
 		otlpmetrichttp.WithURLPath("/api/v1/otlp/v1/metrics"),
 	)

@@ -10,6 +10,7 @@ import (
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/database"
 	"e-commerce/pkg/redis"
+	"encoding/json"
 	"fmt"
 
 	"github.com/gin-gonic/gin"
@@ -26,11 +27,20 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
+	if config.IsDev() {
+		data, err := json.MarshalIndent(conf, "", "  ")
+		if err != nil {
+			cancel()
+			return ctx, nil, nil, fmt.Errorf("无法初始化配置%w", err)
+		}
+		fmt.Println("================ 当前系统配置 ================")
+		fmt.Println(string(data))
+		fmt.Println("============================================")
+	}
 
-	otelShutdown, err := setupOTelSDK(ctx)
+	otelShutdown, err := setupOTelSDK(ctx, conf.Otel)
 	if err != nil {
-		cancel()
-		return ctx, nil, nil, fmt.Errorf("otel sdk初始化失败：%w", err)
+		fmt.Printf("otel sdk初始化失败：%v", err)
 	}
 
 	// --- 日志初始化
@@ -99,7 +109,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 	userMeter := mp.Meter("user_api")
 	userMetrics, err := user.NewMetrics(userMeter)
 	if err != nil {
-		logger.Fatal("metrics初始化失败", zap.Error(err))
+		logger.Error("metrics初始化失败", zap.Error(err))
 	}
 	userRepo := user.NewRepository(db)
 	userSvc := user.NewService(userRepo, userMetrics)

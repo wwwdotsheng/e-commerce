@@ -16,6 +16,7 @@ type AppConfig struct {
 	Redis    RedisSection    `mapstructure:"redis"`
 	Log      LogSection      `mapstructure:"log"`
 	Auth     AuthSection     `mapstructure:"auth"`
+	Otel     OtelSection     `mapstructure:"otel"`
 }
 
 type AppSection struct {
@@ -56,15 +57,24 @@ type LogSection struct {
 	MaxAge     int    `mapstructure:"max_age"`
 }
 
+type OtelSection struct {
+	Enabled  bool `mapstructure:"enabled"`
+	Endpoint struct {
+		Trace  string `mapstructure:"trace_endpoint"`
+		Metric string `mapstructure:"metric_endpoint"`
+	} `mapstructure:"endpoint"`
+	ServiceName string `mapstructure:"service_name"`
+}
+
 type AuthSection struct {
 	AccessTokenExpire  time.Duration `mapstructure:"access_token_expire"`
 	RefreshTokenExpire time.Duration `mapstructure:"refresh_token_expire"`
 	TokenSecret        string        `mapstructure:"token_secret"`
 }
 
-func Init() (*AppConfig, error) {
+func Init(configPath string) (*AppConfig, error) {
 	_ = godotenv.Load()
-	viper.SetConfigFile("/etc/app/config.yaml")
+	viper.SetConfigFile(configPath)
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 

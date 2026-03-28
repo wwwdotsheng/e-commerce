@@ -16,7 +16,7 @@ services:
     depends_on:
       - postgres-dev
       - redis
-    command: air -c .air.toml
+    command: air -c .air.toml -- -c /etc/app/config.yaml
   postgres-dev:
     image: harbor.local/dockerhub/postgres:15
     container_name: postgres-dev
