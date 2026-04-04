@@ -4,6 +4,7 @@ import (
 	"e-commerce/internal/app/identity"
 	"e-commerce/pkg/errno"
 	"e-commerce/pkg/res"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,13 +24,15 @@ func NewHandler(authSvc *Service) *Handler {
 func (h *Handler) Login(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	var loginInput LoginInput
-	if err := c.ShouldBindJSON(&loginInput); err != nil {
+	var loginDTO LoginDTO
+	if err := c.ShouldBindJSON(&loginDTO); err != nil {
 		res.WriteResponse(c, errno.ErrInvalidParam, nil)
 		return
 	}
-
-	tokenPair, err := h.authSvc.Login(ctx, &loginInput)
+	tokenPair, err := h.authSvc.Login(ctx, &LoginInput{
+		Email:    loginDTO.Email,
+		Password: loginDTO.Password,
+	})
 	res.WriteResponse(c, err, tokenPair)
 }
 
