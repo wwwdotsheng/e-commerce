@@ -11,6 +11,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.25.6'
+          go-proxy: "https://goproxy.cn,direct"
 
       - name: Run Ginkgo Tests
         run: |
