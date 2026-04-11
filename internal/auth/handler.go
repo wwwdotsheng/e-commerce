@@ -60,14 +60,14 @@ func (h *Handler) FetchRefreshToken(c *gin.Context) {
 		return
 	}
 
-	at, err := h.authSvc.fetchRefreshToken(ctx, accountInfo)
+	rt, err := h.authSvc.fetchRefreshToken(ctx, accountInfo)
 	if err != nil {
 		res.WriteResponse(c, errno.ErrInternalServer.WithRaw(err), nil)
 		return
 	}
 
-	res.WriteResponse(c, errno.OK, gin.H{
-		"access_token": at,
+	res.WriteResponse(c, err, gin.H{
+		"refresh_token": rt,
 	})
 }
 

@@ -78,11 +78,12 @@ func SetupRouter(authSvc *auth.Service, userSvc *user.Service, logger *zap.Logge
 
 		v1.POST("/auth/login", h.Login)
 
-		authGroup := r.Group("/auth").Use(accessTokenAuthMiddleware)
+		authGroup := v1.Group("/auth").Use(accessTokenAuthMiddleware)
 		authGroup.POST("/fetch-refresh-token", h.FetchRefreshToken)
 		authGroup.POST("/logout", h.Logout)
 
-		r.Group("/auth").Use(refreshTokenAuthMiddleware).POST("/fetch-access-token", h.FetchAccessToken)
+		v1.Group("/auth").Use(refreshTokenAuthMiddleware).
+			POST("/fetch-access-token", h.FetchAccessToken)
 
 		userH := user.NewHandler(userSvc, authSvc)
 		v1.POST("/user/register", userH.Register)

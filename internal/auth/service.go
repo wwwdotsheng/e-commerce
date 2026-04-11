@@ -88,9 +88,9 @@ func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType
 	})
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errno.ErrAuthTokenExpired
+			return nil, errno.ErrAuthTokenExpired.WithRaw(err)
 		} else if errors.Is(err, jwt.ErrTokenMalformed) {
-			return nil, errno.ErrAuthInvalidToken
+			return nil, errno.ErrAuthInvalidToken.WithRaw(err)
 		}
 		return nil, errno.ErrAuthInvalidToken.WithRaw(err)
 	}
@@ -109,7 +109,7 @@ func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, errno.ErrAuthInvalidToken
+			return nil, errno.ErrAuthInvalidToken.WithRaw(err)
 		}
 		return nil, errno.ErrInternalServer.WithRaw(err)
 	}
@@ -120,6 +120,10 @@ func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType
 }
 
 func (svc *Service) generateToken(userID uint, sessionID string, tokenType TokenType) (string, error) {
+	jti, err := generateRandomString(5)
+	if err != nil {
+		return "", fmt.Errorf("generate token jti fail: %w", err)
+	}
 	var tokenPayload TokenPayload
 	if tokenType == AccessToken {
 		tokenPayload = TokenPayload{
@@ -131,6 +135,7 @@ func (svc *Service) generateToken(userID uint, sessionID string, tokenType Token
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(svc.config.AccessTokenExpire)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ID:        jti,
 			},
 		}
 	} else if tokenType == RefreshToken {
@@ -143,6 +148,7 @@ func (svc *Service) generateToken(userID uint, sessionID string, tokenType Token
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(svc.config.RefreshTokenExpire)),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
+				ID:        jti,
 			},
 		}
 	}

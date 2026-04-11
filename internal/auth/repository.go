@@ -6,9 +6,10 @@ import (
 	"e-commerce/internal/model"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
-	"time"
 )
 
 var (
