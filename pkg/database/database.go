@@ -5,6 +5,8 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/pkg/clog"
 	"fmt"
+
+	"go.opentelemetry.io/otel"
 	"gorm.io/plugin/opentelemetry/tracing"
 
 	"go.uber.org/zap"
@@ -13,6 +15,7 @@ import (
 )
 
 func Init(ctx context.Context, config config.DatabaseSection) *gorm.DB {
+	ctx, span := otel.Tracer("database").Start(ctx, "Connecting")
 	logger := clog.L(ctx)
 
 	dsn := fmt.Sprintf(
@@ -30,6 +33,7 @@ func Init(ctx context.Context, config config.DatabaseSection) *gorm.DB {
 	}
 
 	logger.Info("连接数据库成功")
+	span.End()
 
 	return db
 }
