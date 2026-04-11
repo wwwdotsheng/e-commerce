@@ -1,0 +1,28 @@
+name: Build and Push
+on: [push]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25.6'
+
+      - name: Run Ginkgo Tests
+        run: |
+          go install github.com/onsi/ginkgo/v2/ginkgo
+          # 这里会自动拉起你代码里的 Testcontainers (MySQL/Redis)
+          ginkgo -r --race --randomize-all
+
+      - name: Build and Push Docker Image
+        run: |
+          # 登录你的 Harbor
+          docker login harbor.local -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
+          # 这里的标签使用 git commit 的 hash 值，防止镜像污染
+          IMAGE_TAG=harbor.local/my-project/e-commerce:${{ gitea.sha }}
+          docker build -t $IMAGE_TAG .
+          docker push $IMAGE_TAG
