@@ -4,26 +4,26 @@ on: [push]
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    env:
+      GOPROXY: https://goproxy.cn,direct
+
     steps:
       - uses: http://env-1.local:31000/actions/checkout@v3
 
       - name: Set up Go
         uses: http://env-1.local:31000/actions/setup-go@v4
         with:
-          go-version: '1.25.6'
-          go-proxy: "https://goproxy.cn,direct"
+          go-version: '1.23'
 
       - name: Run Ginkgo Tests
         run: |
+          go mod download
           go install github.com/onsi/ginkgo/v2/ginkgo
-          # 这里会自动拉起你代码里的 Testcontainers (MySQL/Redis)
-          ginkgo -r --race --randomize-all
+          $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
 
       - name: Build and Push Docker Image
         run: |
-          # 登录你的 Harbor
-          docker login harbor.local -u ${{ secrets.HARBOR_USER }} -p ${{ secrets.HARBOR_PASSWORD }}
-          # 这里的标签使用 git commit 的 hash 值，防止镜像污染
-          IMAGE_TAG=harbor.local/my-project/e-commerce:${{ gitea.sha }}
+          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.local -u "${{ secrets.HARBOR_USER }}" --password-stdin
+          IMAGE_TAG=harbor.local/my-project/e-commerce:${GITEA_SHA:0:7}
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
