@@ -24,6 +24,8 @@ jobs:
       - name: Build and Push Docker Image
         run: |
           echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.local -u "${{ secrets.HARBOR_USER }}" --password-stdin
-          IMAGE_TAG=harbor.local/my-project/e-commerce:${GITEA_SHA:0:7}
+          SHORT_SHA=$(echo "${{ gitea.sha }}" | cut -c1-7)
+          IMAGE_TAG=harbor.local/my-project/e-commerce:$SHORT_SHA
+          
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
