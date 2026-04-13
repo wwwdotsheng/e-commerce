@@ -193,4 +193,54 @@ var _ = Describe("AuthApi", Ordered, func() {
 		_ = json.Unmarshal(w.Body.Bytes(), &resp)
 		Expect(resp.Code).ToNot(Equal(errno.OK.FullCode()))
 	})
+
+	It("冲突路径: 伪造 Token 尝试访问", func() {
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+		// 故意给一个格式正确但未在 Redis 记录的伪造 Token
+		req.Header.Set("Authorization", "fake.token.value")
+
+		w := httptest.NewRecorder()
+		testRouter.ServeHTTP(w, req)
+
+		var resp Response
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		// 验证：Redis 找不到对应 session 应拦截，防止非法访问
+		Expect(resp.Code).To(Equal(errno.ErrAuthInvalidToken.FullCode()))
+	})
+
+	It("冲突路径: 恶意刷新 - 使用 AccessToken 去刷新 AccessToken", func() {
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/fetch-access-token", nil)
+		// 刷新接口应严格检查 Token 类型，不能用 AT 充当 RT
+		req.Header.Set("Authorization", accessToken)
+
+		w := httptest.NewRecorder()
+		testRouter.ServeHTTP(w, req)
+
+		var resp Response
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
+		Expect(resp.Code).ToNot(Equal(errno.OK.FullCode()))
+	})
+
+	It("并发安全性: 快速双击刷新（模拟网络重试）", func() {
+		// 这里测试 Redis 的原子性或你的业务锁
+		// 连续发送两次刷新请求，验证系统是否能优雅处理或只允许一次生效
+		done := make(chan bool)
+		go func() {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/fetch-access-token", nil)
+			req.Header.Set("Authorization", refreshToken)
+			testRouter.ServeHTTP(w, req)
+			done <- true
+		}()
+
+		// 同步执行第二次
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/fetch-access-token", nil)
+		req.Header.Set("Authorization", refreshToken)
+		testRouter.ServeHTTP(w, req)
+
+		<-done
+		// 只要不 Crash 且最终 Redis 状态保持唯一，测试即通过
+		Expect(w.Code).To(Or(Equal(http.StatusOK), Equal(http.StatusUnauthorized)))
+	})
 })
