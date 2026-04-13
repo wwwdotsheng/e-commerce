@@ -17,6 +17,7 @@ database:
   max_open_conns: 100
   conn_max_lifetime: 10
   time_zone: "Asia/Shanghai"
+  log_level: "error"
 
 redis:
   host: "redis"
@@ -26,7 +27,8 @@ redis:
   pool_size: 10
 
 log:
-  level: 0
+  console_level: "debug"
+  file_level: "debug"
   filename: "./logs/app.log"
   max_size: 100
   max_backups: 3

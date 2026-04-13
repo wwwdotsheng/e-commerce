@@ -10,6 +10,12 @@ import (
 
 var Conf = new(AppConfig)
 
+const (
+	EnvDev  = "DEV"
+	EnvTest = "TEST"
+	EnvProd = "PROD"
+)
+
 type AppConfig struct {
 	App      AppSection      `mapstructure:"app"`
 	Database DatabaseSection `mapstructure:"database"`
@@ -39,6 +45,7 @@ type DatabaseSection struct {
 	MaxOpenConns    int    `mapstructure:"max_open_conns"`
 	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"`
 	TimeZone        string `mapstructure:"time_zone"`
+	LogLevel        string `mapstructure:"log_level"`
 }
 
 type RedisSection struct {
@@ -50,11 +57,12 @@ type RedisSection struct {
 }
 
 type LogSection struct {
-	Level      string `mapstructure:"level"`
-	Filename   string `mapstructure:"filename"`
-	MaxSize    int    `mapstructure:"max_size"`
-	MaxBackups int    `mapstructure:"max_backups"`
-	MaxAge     int    `mapstructure:"max_age"`
+	ConsoleLevel string `mapstructure:"console_level"`
+	FileLevel    string `mapstructure:"file_level"`
+	Filename     string `mapstructure:"filename"`
+	MaxSize      int    `mapstructure:"max_size"`
+	MaxBackups   int    `mapstructure:"max_backups"`
+	MaxAge       int    `mapstructure:"max_age"`
 }
 
 type OtelSection struct {
@@ -88,5 +96,13 @@ func Init(configPath string) (*AppConfig, error) {
 }
 
 func IsDev() bool {
-	return strings.ToUpper(Conf.App.Env) == "DEV"
+	return strings.ToUpper(Conf.App.Env) == EnvDev
+}
+
+func IsTest() bool {
+	return strings.ToUpper(Conf.App.Env) == EnvTest
+}
+
+func IsProd() bool {
+	return strings.ToUpper(Conf.App.Env) == EnvProd
 }

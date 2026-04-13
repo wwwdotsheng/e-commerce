@@ -15,6 +15,14 @@ type ctxKey struct{}
 
 var loggerKey = ctxKey{}
 
+func parseLevel(l string) zapcore.Level {
+	var level zapcore.Level
+	if err := level.UnmarshalText([]byte(l)); err != nil {
+		return zapcore.InfoLevel
+	}
+	return level
+}
+
 func Init(config config.LogSection) *zap.Logger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	// 关键修改：将时间格式化为 ISO8601，方便 Loki 解析
@@ -34,8 +42,8 @@ func Init(config config.LogSection) *zap.Logger {
 	})
 
 	core := zapcore.NewTee(
-		zapcore.NewCore(jsonEncoder, fileSyncer, zapcore.DebugLevel),
-		zapcore.NewCore(jsonEncoder, consoleSyncer, zapcore.DebugLevel),
+		zapcore.NewCore(jsonEncoder, fileSyncer, parseLevel(config.FileLevel)),
+		zapcore.NewCore(jsonEncoder, consoleSyncer, parseLevel(config.ConsoleLevel)),
 	)
 
 	return zap.New(core, zap.AddCaller())

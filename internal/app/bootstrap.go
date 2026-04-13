@@ -27,7 +27,7 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
-	if config.IsDev() {
+	if !config.IsProd() {
 		data, err := json.MarshalIndent(conf, "", "  ")
 		if err != nil {
 			cancel()
@@ -59,8 +59,13 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 }
 
 func SetupRouter(authSvc *auth.Service, userSvc *user.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
-
-	r := gin.Default()
+	var r *gin.Engine
+	if config.IsDev() {
+		r = gin.Default()
+	} else {
+		gin.SetMode(gin.ReleaseMode)
+		r = gin.New()
+	}
 	err := r.SetTrustedProxies([]string{})
 	if err != nil {
 		return nil, err
