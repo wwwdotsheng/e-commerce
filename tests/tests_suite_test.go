@@ -50,8 +50,10 @@ var (
 	appStopFunc    func()
 )
 
+var logger *zap.Logger
+
 var _ = BeforeSuite(func() {
-	ctx, stop, config, err := app.Bootstrap("../configs/config.test.yaml")
+	ctx, stop, config, err := app.Bootstrap()
 	if err != nil {
 		log.Fatalf("应用启动失败：%v", err)
 	}
@@ -61,7 +63,7 @@ var _ = BeforeSuite(func() {
 	// TestContainer启动
 	pgContainer, err = postgres.Run(
 		ctx,
-		"harbor.local/dockerhub/postgres:15-alpine",
+		config.TestImages.Postgres,
 		postgres.WithDatabase(config.Database.DBName),
 		postgres.WithUsername(config.Database.User),
 		postgres.WithPassword(config.Database.Password),
@@ -91,7 +93,7 @@ var _ = BeforeSuite(func() {
 
 	redisContainer, err = redis2.Run(
 		ctx,
-		"harbor.local/dockerhub/redis:7-alpine", // 确保镜像是 redis
+		config.TestImages.Redis,
 	)
 	if err != nil {
 		log.Fatalf("failed to start redis container: %v", err)
@@ -110,7 +112,7 @@ var _ = BeforeSuite(func() {
 	config.Redis.Port = redisPort.Int()
 
 	// 路由初始化 ======================================================
-	logger := clog.L(ctx)
+	logger = clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
 	testDB = database.Init(ctx, config.Database)
@@ -130,14 +132,14 @@ var _ = BeforeSuite(func() {
 	userRepo := user.NewRepository(testDB)
 	userSvc := user.NewService(userRepo, userMetrics)
 
-	testRouter, err = app.SetupRouter(authSvc, userSvc, logger, &mp)
+	testRouter, err = app.SetupRouter(config, authSvc, userSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}
 })
 
 var _ = AfterSuite(func() {
-	log.Println("正在清理测试资源...")
+	logger.Info("正在清理测试资源...")
 	if appStopFunc != nil {
 		appStopFunc()
 	}

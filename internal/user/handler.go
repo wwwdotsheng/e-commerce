@@ -2,9 +2,10 @@ package user
 
 import (
 	"e-commerce/internal/auth"
+	"e-commerce/internal/pkg/response"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/errno"
-	"e-commerce/pkg/res"
+
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,7 +36,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	var registerDTO RegisterDTO
 	if err := c.ShouldBindJSON(&registerDTO); err != nil {
-		res.WriteResponse(c, errno.ErrInvalidParam, nil)
+		response.Write(c, errno.ErrInvalidParam, nil)
 		return
 	}
 
@@ -53,11 +54,11 @@ func (h *Handler) Register(c *gin.Context) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		res.WriteResponse(c, err, nil)
+		response.Write(c, err, nil)
 		return
 	}
 
 	span.SetStatus(codes.Ok, "registered")
 	logger.Info("用户注册成功")
-	res.WriteResponse(c, nil, nil)
+	response.Write(c, nil, nil)
 }

@@ -1,18 +1,21 @@
-package res
+package response
 
 import (
-	"e-commerce/internal/config"
+	"e-commerce/internal/pkg/contextx"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/errno"
-	"errors"
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/go-faster/errors"
+	"go.uber.org/zap"
 )
 
-func WriteResponse(c *gin.Context, err error, data interface{}) {
+func Write(c *gin.Context, err error, data interface{}) {
 	ctx := c.Request.Context()
 	logger := clog.L(ctx)
+
+	cfg := contextx.GetConfig(c)
 
 	resp := gin.H{
 		"code":    errno.OK.FullCode(),
@@ -21,7 +24,7 @@ func WriteResponse(c *gin.Context, err error, data interface{}) {
 	}
 
 	if err == nil {
-		if config.IsDev() {
+		if cfg.IsDev() {
 			resp["devMsg"] = ""
 		}
 		c.JSON(http.StatusOK, resp)
@@ -50,7 +53,7 @@ func WriteResponse(c *gin.Context, err error, data interface{}) {
 	resp["userMsg"] = displayMsg
 	resp["data"] = nil
 
-	if config.IsDev() {
+	if cfg.IsDev() {
 		resp["devMsg"] = e.Error()
 	}
 

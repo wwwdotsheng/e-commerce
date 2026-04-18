@@ -3,8 +3,9 @@ package middleware
 import (
 	"e-commerce/internal/app/identity"
 	"e-commerce/internal/auth"
+	"e-commerce/internal/pkg/response"
 	"e-commerce/pkg/clog"
-	"e-commerce/pkg/res"
+
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -17,7 +18,7 @@ func AccessTokenAuth(authService *auth.Service) gin.HandlerFunc {
 		token := c.GetHeader("Authorization")
 		accountInfo, err := authService.VerifyToken(ctx, token, auth.AccessToken)
 		if err != nil {
-			res.WriteResponse(c, err, nil)
+			response.Write(c, err, nil)
 			c.Abort()
 			return
 		}
@@ -42,7 +43,7 @@ func RefreshTokenAuth(authService *auth.Service) gin.HandlerFunc {
 		token := c.GetHeader("Authorization")
 		accountInfo, err := authService.VerifyToken(ctx, token, auth.RefreshToken)
 		if err != nil {
-			res.WriteResponse(c, err, nil)
+			response.Write(c, err, nil)
 			c.Abort()
 			return
 		}

@@ -1,7 +1,7 @@
 app:
-  name: "app"
-  port: 4000
-  env: "dev"
+  name: "ecommerce-api"
+  port: 8080
+  env: "prod"
   ssl: false
   ssl_crt_path: ""
   ssl_key_path: ""
@@ -45,3 +45,7 @@ otel:
     trace_endpoint: "tempo:4317"
     metric_endpoint: "prometheus:9090"
   service_name: "e-commerce"
+
+test_images:
+  postgres: "postgres:15-alpine"
+  redis: "redis:7-alpine"

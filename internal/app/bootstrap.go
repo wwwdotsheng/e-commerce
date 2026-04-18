@@ -19,15 +19,15 @@ import (
 	"go.uber.org/zap"
 )
 
-func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, error) {
+func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	conf, err := config.Init(configPath)
+	conf, err := config.Init()
 	if err != nil {
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
-	if !config.IsProd() {
+	if !conf.IsProd() {
 		data, err := json.MarshalIndent(conf, "", "  ")
 		if err != nil {
 			cancel()
@@ -58,9 +58,9 @@ func Bootstrap(configPath string) (context.Context, func(), *config.AppConfig, e
 	return ctx, stop, conf, nil
 }
 
-func SetupRouter(authSvc *auth.Service, userSvc *user.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
+func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
 	var r *gin.Engine
-	if config.IsDev() {
+	if conf.IsDev() {
 		r = gin.Default()
 	} else {
 		gin.SetMode(gin.ReleaseMode)
@@ -71,6 +71,7 @@ func SetupRouter(authSvc *auth.Service, userSvc *user.Service, logger *zap.Logge
 		return nil, err
 	}
 
+	r.Use(middleware.InjectConfig(conf))
 	r.Use(middleware.InjectLoggerMiddleware(logger))
 	r.Use(middleware.TraceMiddleware("e-commerce"))
 	r.Use(middleware.RequestLogMiddleware())
@@ -120,7 +121,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 	userRepo := user.NewRepository(db)
 	userSvc := user.NewService(userRepo, userMetrics)
 
-	r, err := SetupRouter(authSvc, userSvc, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}

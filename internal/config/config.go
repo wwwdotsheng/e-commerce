@@ -1,14 +1,16 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
-
-var Conf = new(AppConfig)
 
 const (
 	EnvDev  = "DEV"
@@ -17,12 +19,13 @@ const (
 )
 
 type AppConfig struct {
-	App      AppSection      `mapstructure:"app"`
-	Database DatabaseSection `mapstructure:"database"`
-	Redis    RedisSection    `mapstructure:"redis"`
-	Log      LogSection      `mapstructure:"log"`
-	Auth     AuthSection     `mapstructure:"auth"`
-	Otel     OtelSection     `mapstructure:"otel"`
+	App        AppSection        `mapstructure:"app"`
+	Database   DatabaseSection   `mapstructure:"database"`
+	Redis      RedisSection      `mapstructure:"redis"`
+	Log        LogSection        `mapstructure:"log"`
+	Auth       AuthSection       `mapstructure:"auth"`
+	Otel       OtelSection       `mapstructure:"otel"`
+	TestImages TestImagesSection `mapstructure:"test_images"`
 }
 
 type AppSection struct {
@@ -80,29 +83,64 @@ type AuthSection struct {
 	TokenSecret        string        `mapstructure:"token_secret"`
 }
 
-func Init(configPath string) (*AppConfig, error) {
+type TestImagesSection struct {
+	Postgres string `mapstructure:"postgres"`
+	Redis    string `mapstructure:"redis"`
+}
+
+func Init() (*AppConfig, error) {
+	var cfg AppConfig
 	_ = godotenv.Load()
-	viper.SetConfigFile(configPath)
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
+	v := viper.New()
+
+	v.SetDefault("APP_ENV", EnvProd)
+
+	v.SetEnvPrefix("APP")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	cfgPath := os.Getenv("CONFIG_PATH")
+	if cfgPath == "" {
+		cfgPath = "configs/config.yaml"
 	}
-	if err := viper.Unmarshal(Conf); err != nil {
-		return nil, err
+
+	v.SetConfigFile(cfgPath)
+
+	if err := v.ReadInConfig(); err != nil {
+		log.Printf("Warning: using ENV only, config file not found: %v", err)
 	}
-	return Conf, nil
+
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("config unmarshal failed: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
+	return &cfg, nil
 }
 
-func IsDev() bool {
-	return strings.ToUpper(Conf.App.Env) == EnvDev
+func (c *AppConfig) Validate() error {
+	switch strings.ToUpper(c.App.Env) {
+	case EnvDev, EnvTest, EnvProd:
+	case "":
+		return errors.New("app.env 不能为空")
+	default:
+		return fmt.Errorf("无效的环境配置: %s, 必须是 DEV/TEST/PROD 之一", c.App.Env)
+	}
+
+	if c.Database.Host == "" {
+		return errors.New("database.host required (ENV: APP_DATABASE_HOST)")
+	}
+	if c.Database.User == "" {
+		return errors.New("database.user required")
+	}
+	return nil
 }
 
-func IsTest() bool {
-	return strings.ToUpper(Conf.App.Env) == EnvTest
-}
+// ===== 环境判断 =====
 
-func IsProd() bool {
-	return strings.ToUpper(Conf.App.Env) == EnvProd
-}
+func (c *AppConfig) IsDev() bool  { return strings.ToUpper(c.App.Env) == EnvDev }
+func (c *AppConfig) IsTest() bool { return strings.ToUpper(c.App.Env) == EnvTest }
+func (c *AppConfig) IsProd() bool { return strings.ToUpper(c.App.Env) == EnvProd }
