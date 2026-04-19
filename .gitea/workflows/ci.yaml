@@ -19,7 +19,7 @@ jobs:
         run: |
           go mod download
           go install github.com/onsi/ginkgo/v2/ginkgo
-          APP_ENV=test APP_OTEL_ENABLED=false CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
+          APP_ENV=test APP_TEST_IMAGES_REDIS=harbor.local/dockerhub/redis:alpine3.22 APP_TEST_IMAGES_POSTGRES=harbor.local/dockerhub/postgres:15-alpine APP_OTEL_ENABLED=false CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
 
       - name: Build and Push Docker Image
         run: |
