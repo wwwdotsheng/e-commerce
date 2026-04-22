@@ -7,6 +7,7 @@ import (
 	"e-commerce/internal/middleware"
 	"e-commerce/internal/model"
 	"e-commerce/internal/user"
+	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/database"
 	"e-commerce/pkg/redis"
@@ -58,7 +59,7 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 	return ctx, stop, conf, nil
 }
 
-func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
+func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Service, walletSvc *wallet.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
 	var r *gin.Engine
 	if conf.IsDev() {
 		r = gin.Default()
@@ -94,6 +95,10 @@ func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Se
 		userH := user.NewHandler(userSvc, authSvc)
 		v1.POST("/user/register", userH.Register)
 		v1.Group("/user").Use(accessTokenAuthMiddleware).GET("/good")
+
+		walletH := wallet.NewHandler(walletSvc)
+		walletGroup := v1.Group("/wallet").Use(accessTokenAuthMiddleware)
+		walletGroup.POST("/deposit", walletH.Deposit)
 	}
 	return r, nil
 }
@@ -105,10 +110,13 @@ func Run(ctx context.Context, config config.AppConfig) {
 	mp := otel.GetMeterProvider()
 
 	db := database.Init(ctx, config.Database)
-	if err := db.AutoMigrate(&model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.UserWallet{}, &model.WalletLog{}); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
 	rdb := redis.Init(ctx, config.Redis)
+
+	walletRepo := wallet.NewRepository(db, rdb)
+	walletSvc := wallet.NewService(walletRepo)
 
 	authRepo := auth.NewRepository(db, rdb, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
@@ -119,9 +127,9 @@ func Run(ctx context.Context, config config.AppConfig) {
 		logger.Error("metrics初始化失败", zap.Error(err))
 	}
 	userRepo := user.NewRepository(db)
-	userSvc := user.NewService(userRepo, userMetrics)
+	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
-	r, err := SetupRouter(&config, authSvc, userSvc, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}

@@ -14,6 +14,8 @@ var (
 	ErrAuthSessionRevoked = &Errno{Type: "A", Domain: "02", Code: "102", Message: "账号已在别处登录"}
 	ErrAuthInvalidToken   = &Errno{Type: "A", Domain: "02", Code: "103", Message: "非法访问"}
 
+	ErrWalletInvalidDepositAmount = &Errno{Type: "A", Domain: "03", Code: "101", Message: "充值金额非法"}
+
 	ErrInternalServer = &Errno{Type: "B", Domain: "01", Code: "001", Message: "系统繁忙，请稍后重试"}
 	ErrDatabase       = &Errno{Type: "B", Domain: "01", Code: "002", Message: "数据库操作异常"}
 	ErrGetAccountInfo = &Errno{Type: "B", Domain: "01", Code: "003", Message: "无法获取accountInfo信息"}
