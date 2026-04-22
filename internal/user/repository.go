@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"e-commerce/internal/model"
+	"e-commerce/internal/pkg/database"
 	"errors"
 	"fmt"
 
@@ -22,15 +23,17 @@ var constraintMap = map[string]error{
 }
 
 type Repository struct {
-	db *gorm.DB
+	*database.BaseRepo
 }
 
 func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db}
+	return &Repository{
+		BaseRepo: database.NewBaseRepo(db),
+	}
 }
 
 func (repo *Repository) CreateUser(ctx context.Context, user *model.User) error {
-	result := repo.db.WithContext(ctx).Create(user)
+	result := repo.GetDB(ctx).Create(user)
 	if result.Error != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(result.Error, &pgErr) && pgErr.SQLState() == pgerrcode.UniqueViolation {

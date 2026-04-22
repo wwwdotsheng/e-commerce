@@ -25,7 +25,7 @@ func AccessTokenAuth(authService *auth.Service) gin.HandlerFunc {
 
 		ctx = identity.SetAccountInfo(ctx, accountInfo)
 		newLogger := logger.With(
-			zap.Uint("account_id", accountInfo.AccountId),
+			zap.String("account_id", accountInfo.AccountId.String()),
 			zap.String("session_id", accountInfo.SessionID),
 		)
 		newCtx := clog.WithLogger(ctx, newLogger)
@@ -50,7 +50,7 @@ func RefreshTokenAuth(authService *auth.Service) gin.HandlerFunc {
 
 		ctx = identity.SetAccountInfo(ctx, accountInfo)
 		newLogger := logger.With(
-			zap.Uint("account_id", accountInfo.AccountId),
+			zap.String("account_id", accountInfo.AccountId.String()),
 			zap.String("session_id", accountInfo.SessionID),
 		)
 		newCtx := clog.WithLogger(ctx, newLogger)

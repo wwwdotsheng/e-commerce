@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -93,12 +94,12 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, config *config.AuthSection) *
 func genSidContainKey(sessionId string) string {
 	return fmt.Sprintf("%s:%s", sidContainPrefix, sessionId)
 }
-func genUserSidsKey(accountId uint) string {
+func genUserSidsKey(accountId uuid.UUID) string {
 	return fmt.Sprintf("%s:%d", userSidsPrefix, accountId)
 }
 
 // createSession 为用户创建一个session(使用lua脚本)
-func (repo *Repository) createSession(ctx context.Context, accountId uint, sessionId string, accessToken string, refreshToken string, expireSeconds time.Duration) error {
+func (repo *Repository) createSession(ctx context.Context, accountId uuid.UUID, sessionId string, accessToken string, refreshToken string, expireSeconds time.Duration) error {
 	cmd := createSessionScript.Run(
 		ctx,
 		repo.rdb,
@@ -132,7 +133,7 @@ func (repo *Repository) FindUserByEmail(ctx context.Context, email string) (*mod
 	return &user, result.Error
 }
 
-func (repo *Repository) SetAccessToken(ctx context.Context, accountId uint, sessionId string, accessToken string) error {
+func (repo *Repository) SetAccessToken(ctx context.Context, accountId uuid.UUID, sessionId string, accessToken string) error {
 	cmd := setAccessTokenScript.Run(
 		ctx,
 		repo.rdb,
@@ -151,7 +152,7 @@ func (repo *Repository) SetAccessToken(ctx context.Context, accountId uint, sess
 	return nil
 }
 
-func (repo *Repository) SetRefreshToken(ctx context.Context, accountId uint, sessionId string, refreshToken string) error {
+func (repo *Repository) SetRefreshToken(ctx context.Context, accountId uuid.UUID, sessionId string, refreshToken string) error {
 	cmd := setRefreshTokenScript.Run(
 		ctx,
 		repo.rdb,
@@ -171,7 +172,7 @@ func (repo *Repository) SetRefreshToken(ctx context.Context, accountId uint, ses
 	return nil
 }
 
-func (repo *Repository) DelSession(ctx context.Context, accountId uint, sessionId string) error {
+func (repo *Repository) DelSession(ctx context.Context, accountId uuid.UUID, sessionId string) error {
 	cmd := deleteSessionScript.Run(
 		ctx,
 		repo.rdb,

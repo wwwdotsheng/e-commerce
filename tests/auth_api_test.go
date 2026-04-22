@@ -9,12 +9,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var _ = Describe("AuthApi", Ordered, func() {
+	insertUserId, err := uuid.NewV7()
+	if err != nil {
+		panic(err)
+	}
+
 	type LoginData struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
@@ -23,11 +29,11 @@ var _ = Describe("AuthApi", Ordered, func() {
 	var cleanup = func() {
 		ctx := context.Background()
 		testDB.Exec("delete from users where email = ? or user_name = ?", "test@example.com", "test")
-		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%d", 10000))
+		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%d", insertUserId))
 		for _, session := range sessions.Val() {
 			testRedis.Del(ctx, fmt.Sprintf("ident:sess:%s", session))
 		}
-		testRedis.Del(ctx, fmt.Sprintf("ident:u_sess:%d", 10000))
+		testRedis.Del(ctx, fmt.Sprintf("ident:u_sess:%s", insertUserId))
 	}
 
 	var doLogin = func(email, password string) (*httptest.ResponseRecorder, Response) {
@@ -53,7 +59,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 	BeforeAll(func() {
 		cleanup()
 		bytes, _ := bcrypt.GenerateFromPassword([]byte("123456789"), bcrypt.DefaultCost)
-		testDB.Exec("insert into users (id, user_name, email, password) values (?, ?,?,?)", 10000, "test", "test@example.com", string(bytes))
+		testDB.Exec("insert into users (id, user_name, email, password) values (?, ?,?,?)", insertUserId, "test", "test@example.com", string(bytes))
 		_, resp := doLogin("test@example.com", "123456789")
 
 		var loginData LoginData
@@ -66,7 +72,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 	})
 
 	It("登陆成功", func() {
-		testRedis.Del(context.Background(), fmt.Sprintf("ident:u_sess:%d", 10000))
+		testRedis.Del(context.Background(), fmt.Sprintf("ident:u_sess:%s", insertUserId))
 
 		w, resp := doLogin("test@example.com", "123456789")
 		var loginData LoginData
@@ -78,7 +84,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 		Expect(refreshToken).NotTo(BeEmpty())
 
 		ctx := context.Background()
-		result, err := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%d", 10000)).Result()
+		result, err := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%s", insertUserId)).Result()
 		Expect(err).ToNot(HaveOccurred())
 		Expect(len(result)).To(Equal(1))
 		getRedisField := func(field string) string {
@@ -120,7 +126,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 		Expect(data["access_token"]).NotTo(Equal(accessToken))
 
 		ctx := context.Background()
-		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%d", 10000)).Val()
+		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%s", insertUserId)).Val()
 
 		Expect(len(sessions)).To(Equal(1))
 
@@ -150,7 +156,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 		Expect(data["refresh_token"]).NotTo(Equal(refreshToken))
 
 		ctx := context.Background()
-		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%d", 10000)).Val()
+		sessions := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%s", insertUserId)).Val()
 
 		Expect(len(sessions)).To(Equal(1))
 
@@ -173,7 +179,7 @@ var _ = Describe("AuthApi", Ordered, func() {
 		Expect(resp.Code).To(Equal(errno.OK.FullCode()))
 
 		ctx := context.Background()
-		userSessKey := fmt.Sprintf("ident:u_sess:%d", 10000)
+		userSessKey := fmt.Sprintf("ident:u_sess:%s", insertUserId)
 
 		sessions := testRedis.SMembers(ctx, userSessKey).Val()
 		Expect(len(sessions)).To(Equal(0), "登出后 Redis 集合应为空")

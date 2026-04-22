@@ -1,14 +1,18 @@
 package identity
 
-import "context"
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
 
 type userIdentityCtx struct{}
 
 var userIdentityCtxKey = userIdentityCtx{}
 
 type AccountInfo struct {
-	AccountId uint   `json:"account_id"`
-	SessionID string `json:"session_id"`
+	AccountId uuid.UUID `json:"account_id"`
+	SessionID string    `json:"session_id"`
 }
 
 func SetAccountInfo(ctx context.Context, data *AccountInfo) context.Context {

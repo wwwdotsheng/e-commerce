@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -56,7 +57,7 @@ func genSessionId() (string, error) {
 }
 
 // CreateSession 创建Session
-func (svc *Service) CreateSession(ctx context.Context, userID uint) (string, error) {
+func (svc *Service) CreateSession(ctx context.Context, userID uuid.UUID) (string, error) {
 	sid, err := genSessionId()
 	if err != nil {
 		return "", err
@@ -119,7 +120,7 @@ func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType
 	return &claims.AccountInfo, nil
 }
 
-func (svc *Service) generateToken(userID uint, sessionID string, tokenType TokenType) (string, error) {
+func (svc *Service) generateToken(userID uuid.UUID, sessionID string, tokenType TokenType) (string, error) {
 	jti, err := generateRandomString(5)
 	if err != nil {
 		return "", fmt.Errorf("generate token jti fail: %w", err)
