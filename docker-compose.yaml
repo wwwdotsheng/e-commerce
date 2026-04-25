@@ -16,6 +16,9 @@ services:
     depends_on:
       - postgres-dev
       - redis
+      - prometheus
+      - tempo
+      - rabbitmq
     command: air -c .air.toml -- -c /etc/app/config.yaml
   postgres-dev:
     image: harbor.local/dockerhub/postgres:15
@@ -52,6 +55,22 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+  rabbitmq:
+    image: harbor.local/dockerhub/rabbitmq:3.12-management
+    container_name: ecommerce-mq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - ./data/rabbitmq:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   prometheus:
     image: harbor.local/dockerhub/prom/prometheus:v3.9.1
     container_name: prometheus
