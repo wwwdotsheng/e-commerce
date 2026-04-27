@@ -49,23 +49,6 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	}
 	span.End()
 
-	err = svc.repo.CreateUser(ctx, &model.User{
-		Email:    input.Email,
-		Password: string(bytes),
-		UserName: input.UserName,
-	})
-
-	if err != nil {
-		if errors.Is(err, repoErrUserNameAlreadyExists) {
-			errCode = MetErrCodeUserRegistered
-			return errno.ErrUserNameExisted
-		} else if errors.Is(err, repoErrEmailAlreadyExists) {
-			errCode = MetErrCodeEmailRegistered
-			return errno.ErrUserEmailExisted
-		}
-		return errno.ErrInternalServer.WithRaw(err)
-	}
-
 	if err := database.ExecuteTransaction(ctx, svc.repo.GetDB(ctx), func(txCtx context.Context) error {
 		user := &model.User{
 			UserName: input.UserName,
