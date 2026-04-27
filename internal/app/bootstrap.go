@@ -104,16 +104,32 @@ func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Se
 }
 
 func Run(ctx context.Context, config config.AppConfig) {
-	var err error
-
 	logger := clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
-	db := database.Init(ctx, config.Database)
+	db := database.Init(ctx, logger, database.Config{
+		Host:            config.Database.Host,
+		Port:            config.Database.Port,
+		User:            config.Database.User,
+		Password:        config.Database.Password,
+		DBName:          config.Database.DBName,
+		SSLMode:         config.Database.SSLMode,
+		MaxIdleConns:    config.Database.MaxIdleConns,
+		MaxOpenConns:    config.Database.MaxOpenConns,
+		ConnMaxLifetime: config.Database.ConnMaxLifetime,
+		TimeZone:        config.Database.TimeZone,
+		LogLevel:        config.Database.LogLevel,
+	})
 	if err := db.AutoMigrate(&model.User{}, &model.UserWallet{}, &model.WalletLog{}); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
-	rdb := redis.Init(ctx, config.Redis)
+	rdb := redis.Init(ctx, redis.Config{
+		Host:     config.Redis.Host,
+		Port:     config.Redis.Port,
+		Password: config.Redis.Password,
+		DB:       config.Redis.DB,
+		PoolSize: config.Redis.PoolSize,
+	})
 
 	walletRepo := wallet.NewRepository(db, rdb)
 	walletSvc := wallet.NewService(walletRepo)

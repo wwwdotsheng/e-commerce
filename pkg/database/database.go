@@ -2,8 +2,6 @@ package database
 
 import (
 	"context"
-	"e-commerce/internal/config"
-	"e-commerce/pkg/clog"
 	"fmt"
 	"strings"
 
@@ -14,6 +12,25 @@ import (
 	dbLogger "gorm.io/gorm/logger"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
+
+type Logger interface {
+	Info(msg string, field ...zap.Field)
+	Error(msg string, field ...zap.Field)
+}
+
+type Config struct {
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	DBName          string
+	SSLMode         string
+	MaxIdleConns    int
+	MaxOpenConns    int
+	ConnMaxLifetime int
+	TimeZone        string
+	LogLevel        string
+}
 
 func parseLevel(l string) dbLogger.LogLevel {
 	switch strings.ToLower(l) {
@@ -30,9 +47,8 @@ func parseLevel(l string) dbLogger.LogLevel {
 	}
 }
 
-func Init(ctx context.Context, config config.DatabaseSection) *gorm.DB {
+func Init(ctx context.Context, logger Logger, config Config) *gorm.DB {
 	ctx, span := otel.Tracer("database").Start(ctx, "Connecting")
-	logger := clog.L(ctx)
 
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=%s",
