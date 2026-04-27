@@ -45,7 +45,14 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 	}
 
 	// --- 日志初始化
-	logger := clog.Init(conf.Log)
+	logger := clog.Init(clog.Config{
+		ConsoleLevel: conf.Log.ConsoleLevel,
+		FileLevel:    conf.Log.FileLevel,
+		Filename:     conf.Log.Filename,
+		MaxSize:      conf.Log.MaxSize,
+		MaxBackups:   conf.Log.MaxBackups,
+		MaxAge:       conf.Log.MaxAge,
+	})
 	ctx = clog.WithLogger(ctx, logger)
 
 	stop := func() {
