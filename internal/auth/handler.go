@@ -77,6 +77,7 @@ func (h *Handler) Logout(c *gin.Context) {
 	accountInfo := identity.GetAccountInfo(ctx)
 	if accountInfo == nil {
 		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
 	}
 
 	err := h.authSvc.logout(ctx, accountInfo)
