@@ -9,7 +9,7 @@ import (
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
-	"e-commerce/pkg/database"
+	"e-commerce/pkg/dbconn"
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"fmt"

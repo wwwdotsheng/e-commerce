@@ -7,7 +7,7 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/user"
 	"e-commerce/pkg/clog"
-	"e-commerce/pkg/database"
+	"e-commerce/pkg/dbconn"
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"log"
@@ -68,7 +68,7 @@ var _ = BeforeSuite(func() {
 		postgres.WithUsername(config.Database.User),
 		postgres.WithPassword(config.Database.Password),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
+			wait.ForLog("dbconn system is ready to accept connections").
 				WithOccurrence(2).
 				WithStartupTimeout(15*time.Second),
 		),
@@ -115,11 +115,29 @@ var _ = BeforeSuite(func() {
 	logger = clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
-	testDB = database.Init(ctx, config.Database)
+	testDB = dbconn.Init(ctx, logger, dbconn.Config{
+		Host:            config.Database.Host,
+		Port:            config.Database.Port,
+		User:            config.Database.User,
+		Password:        config.Database.Password,
+		DBName:          config.Database.DBName,
+		SSLMode:         config.Database.SSLMode,
+		MaxIdleConns:    config.Database.MaxIdleConns,
+		MaxOpenConns:    config.Database.MaxOpenConns,
+		ConnMaxLifetime: config.Database.ConnMaxLifetime,
+		TimeZone:        config.Database.TimeZone,
+		LogLevel:        config.Database.LogLevel,
+	})
 	if err := testDB.AutoMigrate(&model.User{}); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
-	testRedis = redis.Init(ctx, config.Redis)
+	testRedis = redis.Init(ctx, redis.Config{
+		Host:     config.Redis.Host,
+		Port:     config.Redis.Port,
+		Password: config.Redis.Password,
+		DB:       config.Redis.DB,
+		PoolSize: config.Redis.PoolSize,
+	})
 
 	authRepo := auth.NewRepository(testDB, testRedis, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
