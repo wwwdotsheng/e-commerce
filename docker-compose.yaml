@@ -58,6 +58,7 @@ services:
   rabbitmq:
     image: harbor.local/dockerhub/rabbitmq:3.12-management
     container_name: ecommerce-mq
+    restart: always
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -71,9 +72,12 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - monitor_net
   prometheus:
     image: harbor.local/dockerhub/prom/prometheus:v3.9.1
     container_name: prometheus
+    restart: always
     ports:
       - "9090:9090"
     volumes:
@@ -86,6 +90,7 @@ services:
   tempo:
     image: harbor.local/dockerhub/grafana/tempo:2.10.0
     container_name: tempo
+    restart: always
     command:
       - "-config.file=/etc/tempo.yaml"
     volumes:
@@ -99,6 +104,7 @@ services:
   loki:
     image: harbor.local/dockerhub/grafana/loki:3.6.4
     container_name: loki
+    restart: always
     ports:
       - "3100:3100"
     volumes:
@@ -110,6 +116,7 @@ services:
   promtail:
     image: harbor.local/dockerhub/grafana/promtail:3.6.4
     container_name: promtail
+    restart: always
     volumes:
       - ./logs:/var/log
       - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
@@ -120,6 +127,7 @@ services:
   grafana:
     image: harbor.local/dockerhub/grafana/grafana:12.3.2
     container_name: grafana
+    restart: always
     ports:
       - "3000:3000"
     environment:
