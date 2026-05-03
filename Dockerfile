@@ -7,9 +7,13 @@ RUN go env -w GOPROXY=https://goproxy.cn,direct
 RUN go install github.com/air-verse/air@latest
 
 COPY go.mod go.sum ./
-RUN go mod download
+
+RUN go mod download && go mod verify
+
 COPY . .
-RUN go build -o main ./cmd/
+
+RUN --mount=type=cache,target=/go/pkg/mod\
+    go build -o main ./cmd/
 
 # 运行阶段 (仅用于生产环境打包)
 FROM harbor.local/dockerhub/alpine:latest
