@@ -6,6 +6,7 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/middleware"
 	"e-commerce/internal/model"
+	"e-commerce/internal/product"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
@@ -66,7 +67,15 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 	return ctx, stop, conf, nil
 }
 
-func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Service, walletSvc *wallet.Service, logger *zap.Logger, mp *metric.MeterProvider) (*gin.Engine, error) {
+func SetupRouter(
+	conf *config.AppConfig,
+	authSvc *auth.Service,
+	userSvc *user.Service,
+	walletSvc *wallet.Service,
+	productSvc *product.Service,
+	logger *zap.Logger,
+	mp *metric.MeterProvider,
+) (*gin.Engine, error) {
 	var r *gin.Engine
 	if conf.IsDev() {
 		r = gin.Default()
@@ -106,6 +115,15 @@ func SetupRouter(conf *config.AppConfig, authSvc *auth.Service, userSvc *user.Se
 		walletH := wallet.NewHandler(walletSvc)
 		walletGroup := v1.Group("/wallet").Use(accessTokenAuthMiddleware)
 		walletGroup.POST("/deposit", walletH.Deposit)
+
+		productH := product.NewHandler(productSvc)
+		productGroup := v1.Group("/product").Use(accessTokenAuthMiddleware)
+		productGroup.POST("/create", productH.CreateProduct)
+		productGroup.GET("/list", productH.ListProducts)
+		productGroup.GET("/:id", productH.GetProduct)
+		productGroup.PATCH("/:id", productH.UpdateProductProperty)
+		productGroup.POST("/:id/status", productH.UpdateProductStatus)
+		productGroup.DELETE("/:id", productH.DeleteProduct)
 	}
 	return r, nil
 }
@@ -127,7 +145,13 @@ func Run(ctx context.Context, config config.AppConfig) {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := db.AutoMigrate(&model.User{}, &model.UserWallet{}, &model.WalletLog{}); err != nil {
+	if err := db.AutoMigrate(
+		&model.User{},
+		&model.UserWallet{},
+		&model.WalletLog{},
+		&model.Product{},
+		&model.Order{},
+	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
 	rdb := redis.Init(ctx, redis.Config{
@@ -152,7 +176,22 @@ func Run(ctx context.Context, config config.AppConfig) {
 	userRepo := user.NewRepository(db)
 	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
-	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, logger, &mp)
+	productRepo := product.NewRepository(db)
+	productSvc := product.NewService(db, productRepo)
+
+	orderRepo := order.NewRepository(db, mqCh, &config.OrderMQ)
+	err = orderRepo.SetupMQ(&config.OrderMQ)
+	if err != nil {
+		logger.Fatal("初始化order mq错误", zap.Error(err))
+	}
+	orderSvc := order.NewService(db, orderRepo)
+
+	orderMqHandler := order.NewMqHandler(orderSvc)
+	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {
+		logger.Error("启动订单消费者失败", zap.Error(err))
+	}
+
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}
@@ -167,6 +206,5 @@ func Run(ctx context.Context, config config.AppConfig) {
 		if err := r.Run(addr); err != nil {
 			logger.Fatal("服务器启动失败", zap.Error(err))
 		}
-
 	}
 }
