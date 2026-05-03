@@ -132,7 +132,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 	logger := clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
-	db := database.Init(ctx, logger, database.Config{
+	db := dbconn.Init(ctx, logger, dbconn.Config{
 		Host:            config.Database.Host,
 		Port:            config.Database.Port,
 		User:            config.Database.User,
