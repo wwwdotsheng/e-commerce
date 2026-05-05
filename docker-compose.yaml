@@ -10,7 +10,7 @@ services:
       - .:/app
       - ./configs/config.yaml:/etc/app/config.yaml:ro
     ports:
-      - "8080:8080"
+      - "10000:8080"
     networks:
       - monitor_net
     depends_on:
@@ -20,6 +20,8 @@ services:
       - tempo
       - rabbitmq
     command: air -c .air.toml -- -c /etc/app/config.yaml
+    environment:
+      APP_APP_ENV: DEV
   postgres-dev:
     image: harbor.local/dockerhub/postgres:15
     container_name: postgres-dev

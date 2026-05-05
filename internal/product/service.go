@@ -87,6 +87,8 @@ func (svc *Service) UpdateProductStatus(ctx context.Context, param UpdateProduct
 	})
 }
 
+// TODO 对于库存扣减，应该有一个接口直接提供给商家设 定到指定的stock
+// TODO
 func (svc *Service) UpdateProductStock(ctx context.Context, param UpdateProductStockParam) error {
 	return svc.repo.UpdateStock(ctx, UpdateStockData{
 		ProductID: param.ProductID,

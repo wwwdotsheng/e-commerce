@@ -6,11 +6,13 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/middleware"
 	"e-commerce/internal/model"
+	"e-commerce/internal/order"
 	"e-commerce/internal/product"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/dbconn"
+	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"fmt"
@@ -30,13 +32,13 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
 	if !conf.IsProd() {
-		data, err := json.MarshalIndent(conf, "", "  ")
+		_, err := json.MarshalIndent(conf, "", "  ")
 		if err != nil {
 			cancel()
 			return ctx, nil, nil, fmt.Errorf("无法初始化配置%w", err)
 		}
 		fmt.Println("================ 当前系统配置 ================")
-		fmt.Println(string(data))
+		//fmt.Println(string(data))
 		fmt.Println("============================================")
 	}
 
@@ -161,6 +163,14 @@ func Run(ctx context.Context, config config.AppConfig) {
 		DB:       config.Redis.DB,
 		PoolSize: config.Redis.PoolSize,
 	})
+
+	mqCh, stop := mq.InitMq(ctx, logger, mq.Config{
+		User:     config.RabbitMQ.User,
+		Password: config.RabbitMQ.Password,
+		Host:     config.RabbitMQ.Host,
+		Port:     config.RabbitMQ.Port,
+	})
+	defer stop()
 
 	walletRepo := wallet.NewRepository(db, rdb)
 	walletSvc := wallet.NewService(walletRepo)
