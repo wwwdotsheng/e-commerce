@@ -5,9 +5,13 @@ import (
 	"e-commerce/internal/app"
 	"e-commerce/internal/auth"
 	"e-commerce/internal/model"
+	"e-commerce/internal/order"
+	"e-commerce/internal/product"
 	"e-commerce/internal/user"
+	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/dbconn"
+	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"log"
@@ -16,6 +20,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	goredis "github.com/go-redis/redis/v8"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	redis2 "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -47,6 +52,9 @@ var (
 
 	pgContainer    testcontainers.Container
 	redisContainer testcontainers.Container
+	rmqContainer   testcontainers.Container
+	mqCh           *amqp.Channel
+	mqCleanup      func()
 	appStopFunc    func()
 )
 
@@ -60,7 +68,7 @@ var _ = BeforeSuite(func() {
 
 	defer stop()
 
-	// TestContainer启动
+	// --- PostgreSQL ---
 	pgContainer, err = postgres.Run(
 		ctx,
 		config.TestImages.Postgres,
@@ -68,7 +76,7 @@ var _ = BeforeSuite(func() {
 		postgres.WithUsername(config.Database.User),
 		postgres.WithPassword(config.Database.Password),
 		testcontainers.WithWaitStrategy(
-			wait.ForLog("dbconn system is ready to accept connections").
+			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
 				WithStartupTimeout(15*time.Second),
 		),
@@ -80,7 +88,6 @@ var _ = BeforeSuite(func() {
 	pgPort, err := pgContainer.MappedPort(ctx, "5432")
 	if err != nil {
 		log.Fatalf("failed to get mapped port: %v", err)
-		return
 	}
 
 	pgHost, err := pgContainer.Host(ctx)
@@ -91,6 +98,7 @@ var _ = BeforeSuite(func() {
 	config.Database.Port = pgPort.Int()
 	config.Database.Host = pgHost
 
+	// --- Redis ---
 	redisContainer, err = redis2.Run(
 		ctx,
 		config.TestImages.Redis,
@@ -111,6 +119,32 @@ var _ = BeforeSuite(func() {
 	config.Redis.Host = redisHost
 	config.Redis.Port = redisPort.Int()
 
+	// --- RabbitMQ ---
+	rmqContainer, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: testcontainers.ContainerRequest{
+			Image:        "rabbitmq:3-alpine",
+			ExposedPorts: []string{"5672/tcp"},
+			WaitingFor: wait.ForLog("started TCP listener on 0.0.0.0:5672").
+				WithStartupTimeout(30 * time.Second),
+		},
+		Started: true,
+	})
+	if err != nil {
+		log.Fatalf("failed to start rabbitmq container: %v", err)
+	}
+
+	rmqHost, err := rmqContainer.Host(ctx)
+	if err != nil {
+		log.Fatalf("failed to get rmq host: %v", err)
+	}
+	rmqPort, err := rmqContainer.MappedPort(ctx, "5672/tcp")
+	if err != nil {
+		log.Fatalf("failed to get rmq mapped port: %v", err)
+	}
+
+	config.RabbitMQ.Host = rmqHost
+	config.RabbitMQ.Port = rmqPort.Int()
+
 	// 路由初始化 ======================================================
 	logger = clog.L(ctx)
 	mp := otel.GetMeterProvider()
@@ -128,7 +162,7 @@ var _ = BeforeSuite(func() {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := testDB.AutoMigrate(&model.User{}); err != nil {
+	if err := testDB.AutoMigrate(&model.User{}, &model.Product{}, &model.Order{}); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
 	testRedis = redis.Init(ctx, redis.Config{
@@ -139,8 +173,19 @@ var _ = BeforeSuite(func() {
 		PoolSize: config.Redis.PoolSize,
 	})
 
+	mqCh, mqCleanup = mq.InitMq(ctx, logger, mq.Config{
+		User:     config.RabbitMQ.User,
+		Password: config.RabbitMQ.Password,
+		Host:     config.RabbitMQ.Host,
+		Port:     config.RabbitMQ.Port,
+	})
+
+	// --- Service 初始化 ---
 	authRepo := auth.NewRepository(testDB, testRedis, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
+
+	walletRepo := wallet.NewRepository(testDB, testRedis)
+	walletSvc := wallet.NewService(walletRepo)
 
 	userMeter := mp.Meter("user_api")
 	userMetrics, err := user.NewMetrics(userMeter)
@@ -148,9 +193,18 @@ var _ = BeforeSuite(func() {
 		logger.Fatal("metrics初始化失败", zap.Error(err))
 	}
 	userRepo := user.NewRepository(testDB)
-	userSvc := user.NewService(userRepo, userMetrics)
+	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
-	testRouter, err = app.SetupRouter(config, authSvc, userSvc, logger, &mp)
+	productRepo := product.NewRepository(testDB)
+	productSvc := product.NewService(testDB, productRepo)
+
+	orderRepo := order.NewRepository(testDB, mqCh, &config.OrderMQ)
+	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
+		logger.Fatal("初始化order mq失败", zap.Error(err))
+	}
+	orderSvc := order.NewService(testDB, orderRepo, productRepo)
+
+	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}
@@ -162,6 +216,11 @@ var _ = AfterSuite(func() {
 		appStopFunc()
 	}
 	ctx := context.Background()
+
+	if mqCleanup != nil {
+		mqCleanup()
+	}
+
 	defer func() {
 		if err := pgContainer.Terminate(ctx); err != nil {
 			log.Fatalf("failed to terminate postgres container: %v", err)
@@ -170,6 +229,13 @@ var _ = AfterSuite(func() {
 	defer func() {
 		if err := redisContainer.Terminate(ctx); err != nil {
 			log.Fatalf("failed to terminate redis container: %v", err)
+		}
+	}()
+	defer func() {
+		if rmqContainer != nil {
+			if err := rmqContainer.Terminate(ctx); err != nil {
+				log.Fatalf("failed to terminate rabbitmq container: %v", err)
+			}
 		}
 	}()
 })
