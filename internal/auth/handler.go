@@ -62,11 +62,11 @@ func (h *Handler) FetchRefreshToken(c *gin.Context) {
 
 	rt, err := h.authSvc.fetchRefreshToken(ctx, accountInfo)
 	if err != nil {
-		response.Write(c, errno.ErrInternalServer.WithRaw(err), nil)
+		response.Write(c, err, nil)
 		return
 	}
 
-	response.Write(c, err, gin.H{
+	response.Write(c, nil, gin.H{
 		"refresh_token": rt,
 	})
 }
@@ -82,7 +82,7 @@ func (h *Handler) Logout(c *gin.Context) {
 
 	err := h.authSvc.logout(ctx, accountInfo)
 	if err != nil {
-		response.Write(c, errno.ErrInternalServer.WithRaw(err), nil)
+		response.Write(c, err, nil)
 		return
 	}
 
