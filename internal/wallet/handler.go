@@ -24,7 +24,6 @@ func NewHandler(wallSvc *Service) *Handler {
 
 func (h *Handler) Deposit(c *gin.Context) {
 	ctx := c.Request.Context()
-	// logger := clog.L(ctx)
 
 	var depositDTO DepositDTO
 	if err := c.ShouldBindJSON(&depositDTO); err != nil {
@@ -34,7 +33,7 @@ func (h *Handler) Deposit(c *gin.Context) {
 
 	accountInfo := identity.GetAccountInfo(ctx)
 	if accountInfo == nil {
-		response.Write(c, errno.ErrInternalServer, nil)
+		response.Write(c, errno.ErrGetAccountInfo, nil)
 		return
 	}
 
@@ -49,7 +48,7 @@ func (h *Handler) Deposit(c *gin.Context) {
 		IdempotencyKey: depositDTO.IdempotencyKey,
 	})
 	if err != nil {
-		response.Write(c, errno.ErrInternalServer.WithRaw(err), nil)
+		response.Write(c, err, nil)
 		return
 	}
 

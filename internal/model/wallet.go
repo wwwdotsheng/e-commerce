@@ -14,7 +14,8 @@ const (
 type UserWallet struct {
 	UserID    uuid.UUID `gorm:"column:user_id;primaryKey;type:uuid"`
 	Balance   float64   `gorm:"column:balance;type:decimal(16,2);not null;default:0"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
+	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 type WalletLog struct {
@@ -24,6 +25,7 @@ type WalletLog struct {
 	Amount         float64   `gorm:"column:amount;type:decimal(16,2);not null;"`
 	Type           string    `gorm:"column:type;type:varchar(20);not null;"`
 	IdempotencyKey string    `gorm:"column:idempotency_key;uniqueIndex:uni_wallet_log_idempotency_key;type:varchar(64);not null;"`
+	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime"`
 }
 
 func (wl *WalletLog) BeforeCreate(tx *gorm.DB) (err error) {
