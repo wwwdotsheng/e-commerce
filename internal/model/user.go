@@ -15,10 +15,10 @@ const (
 type User struct {
 	ID        uuid.UUID      `gorm:"primaryKey;type:uuid"`
 	UserName  string         `gorm:"column:user_name;uniqueIndex:uni_user_user_name;type:varchar(30);not null"`
-	Email     string         `gorm:"column:email;uniqueIndex:uni_user_user_email;type:varchar(30);not null"`
+	Email     string         `gorm:"column:email;uniqueIndex:uni_user_user_email;type:varchar(254);not null"`
 	Password  string         `gorm:"column:password;type:varchar(255);not null"`
-	CreatedAt time.Time      `gorm:"column:created_at"`
-	UpdatedAt time.Time      `gorm:"column:updated_at"`
+	CreatedAt time.Time      `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"column:updated_at;autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
