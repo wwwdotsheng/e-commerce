@@ -22,7 +22,7 @@ var (
 	ErrProductStatusInvalid     = &Errno{Type: "A", Domain: "04", Code: "103", Message: "商品状态参数无效"}
 
 	// ErrOrderProductIdNotFound 下单时输入的商品 ID 在系统中无法找到
-	ErrOrderProductIdNotFound = &Errno{Type: "A", Domain: "04", Code: "101", Message: "商品ID不存在"}
+	ErrOrderProductIdNotFound = &Errno{Type: "A", Domain: "05", Code: "100", Message: "商品ID不存在"}
 
 	ErrInternalServer = &Errno{Type: "B", Domain: "01", Code: "001", Message: "系统繁忙，请稍后重试"}
 	ErrDatabase       = &Errno{Type: "B", Domain: "01", Code: "002", Message: "数据库操作异常"}
