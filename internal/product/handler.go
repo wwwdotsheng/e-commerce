@@ -112,14 +112,14 @@ func (h *Handler) DeleteProduct(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var uri UriWithProductID
-	if err := c.ShouldBindJSON(&uri); err != nil {
+	if err := c.ShouldBindUri(&uri); err != nil {
 		response.Write(c, errno.ErrInvalidParam, nil)
 		return
 	}
 
 	accountInfo := identity.GetAccountInfo(ctx)
 	if accountInfo == nil {
-		response.Write(c, errno.ErrInternalServer, nil)
+		response.Write(c, errno.ErrGetAccountInfo, nil)
 		return
 	}
 
@@ -149,7 +149,7 @@ func (h *Handler) UpdateProductProperty(c *gin.Context) {
 		response.Write(c, errno.ErrInvalidParam, nil)
 		return
 	}
-	if err := c.ShouldBind(&body); err != nil {
+	if err := c.ShouldBindJSON(&body); err != nil {
 		response.Write(c, errno.ErrInvalidParam, nil)
 		return
 
@@ -157,7 +157,7 @@ func (h *Handler) UpdateProductProperty(c *gin.Context) {
 
 	accountInfo := identity.GetAccountInfo(ctx)
 	if accountInfo == nil {
-		response.Write(c, errno.ErrInternalServer, nil)
+		response.Write(c, errno.ErrGetAccountInfo, nil)
 		return
 	}
 
@@ -197,7 +197,7 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 
 	accountInfo := identity.GetAccountInfo(ctx)
 	if accountInfo == nil {
-		response.Write(c, errno.ErrInternalServer, nil)
+		response.Write(c, errno.ErrGetAccountInfo, nil)
 		return
 	}
 

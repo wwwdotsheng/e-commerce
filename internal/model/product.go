@@ -30,7 +30,7 @@ type Product struct {
 	Price       float64       `gorm:"column:price;type:decimal(16,2);not null"`
 	Stock       int           `gorm:"column:stock;not null;default:0;check:stock >= 0"`
 	FrozenStock int           `gorm:"column:frozen_stock;not null;default:0;check:stock >= 0"`
-	Status      ProductStatus `gorm:"column:status;varchar(16);not null;default:'active'"`
+	Status      ProductStatus `gorm:"column:status;type:varchar(16);not null;default:'active'"`
 	Version     int           `gorm:"column:version;not null;default:0"`
 	CreatedAt   time.Time     `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt   time.Time     `gorm:"column:updated_at;autoUpdateTime"`

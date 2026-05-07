@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/database"
+	"e-commerce/pkg/errno"
 	"errors"
 	"time"
 
@@ -116,6 +117,24 @@ func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) e
 	// TODO(7)[2026-04-29] 这里如何分离库存不足和商品不存在的错误
 	if result.RowsAffected == 0 {
 		return errors.New("update failed: insufficient stock or product not found")
+	}
+	return nil
+}
+
+// DeductStock 下单扣减库存（无 publisher 校验，事务内使用）
+func (repo *Repository) DeductStock(ctx context.Context, productID uuid.UUID, quantity int) error {
+	result := repo.GetDB(ctx).Model(&model.Product{}).
+		Where("id = ? AND stock >= ?", productID, quantity).
+		Updates(map[string]interface{}{
+			"stock":      gorm.Expr("stock - ?", quantity),
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errno.ErrProductStockInsufficient
 	}
 	return nil
 }

@@ -2,8 +2,6 @@ package product
 
 import (
 	"e-commerce/internal/model"
-
-	"github.com/google/uuid"
 )
 
 type CreateProductBody struct {
@@ -12,7 +10,6 @@ type CreateProductBody struct {
 	Price       float64              `json:"price" binding:"required,gt=0"`
 	Status      *model.ProductStatus `json:"status" binding:"required,oneof=active inactive"`
 	Stock       int                  `json:"stock" binding:"required,gte=0"`
-	Publisher   uuid.UUID            `json:"publisher" binding:"required"`
 }
 
 type UriWithProductID struct {
