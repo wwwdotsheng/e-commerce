@@ -95,6 +95,7 @@ type AuthSection struct {
 type TestImagesSection struct {
 	Postgres string `mapstructure:"postgres"`
 	Redis    string `mapstructure:"redis"`
+	RabbitMQ string `mapstructure:"rabbitmq"`
 }
 
 type OrderMQConfig struct {

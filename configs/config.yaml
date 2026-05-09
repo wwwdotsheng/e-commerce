@@ -55,6 +55,7 @@ otel:
 test_images:
   postgres: "postgres:15-alpine"
   redis: "redis:7-alpine"
+  rabbitmq: "rabbitmq:3.12-management"
 
 
 order_mq:
