@@ -83,8 +83,10 @@ func (repo *Repository) CreateOrder(ctx context.Context, order *model.Order) err
 		}
 		return fmt.Errorf("failed to create order %s: %w", order.ID, err)
 	}
+	return nil
+}
 
-	body := order.ID.String()
+func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.UUID) error {
 	return repo.mqCh.PublishWithContext(ctx,
 		"",
 		repo.mqCfg.DelayQueue,
@@ -92,7 +94,7 @@ func (repo *Repository) CreateOrder(ctx context.Context, order *model.Order) err
 		false,
 		amqp.Publishing{
 			DeliveryMode: amqp.Persistent,
-			Body:         []byte(body),
+			Body:         []byte(orderID.String()),
 		},
 	)
 }

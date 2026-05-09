@@ -6,10 +6,12 @@ import (
 	"e-commerce/internal/pkg/database"
 	"e-commerce/internal/product"
 	"e-commerce/pkg/errno"
+	"e-commerce/pkg/clog"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +27,8 @@ func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository) 
 
 // CreateOrder 创建订单
 func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param CreateOrderParam) error {
+	var order *model.Order
+
 	err := database.ExecuteTransaction(ctx, svc.db, func(ctx context.Context) error {
 		p, err := svc.productRepo.GetProductByID(ctx, param.ProductID, database.LockUpdate)
 		if err != nil {
@@ -40,7 +44,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			return err
 		}
 
-		order := &model.Order{
+		order = &model.Order{
 			UserID:         userID,
 			ProductId:      param.ProductID,
 			Quantity:       param.Quantity,
@@ -51,10 +55,20 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 		}
 		return svc.repo.CreateOrder(ctx, order)
 	})
-	if errors.Is(err, repoErrOrderIdempotencyConflict) {
-		return nil
+	if err != nil {
+		if errors.Is(err, repoErrOrderIdempotencyConflict) {
+			return nil
+		}
+		return err
 	}
-	return err
+
+	if err := svc.repo.PublishTimeoutMessage(ctx, order.ID); err != nil {
+		clog.L(ctx).Error("发送订单超时消息失败",
+			zap.String("order_id", order.ID.String()),
+			zap.Error(err),
+		)
+	}
+	return nil
 }
 
 func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) error {
