@@ -95,7 +95,7 @@ func genSidContainKey(sessionId string) string {
 	return fmt.Sprintf("%s:%s", sidContainPrefix, sessionId)
 }
 func genUserSidsKey(accountId uuid.UUID) string {
-	return fmt.Sprintf("%s:%d", userSidsPrefix, accountId)
+	return fmt.Sprintf("%s:%s", userSidsPrefix, accountId)
 }
 
 // createSession 为用户创建一个session(使用lua脚本)
