@@ -54,10 +54,9 @@ func (repo *Repository) GetProductByID(ctx context.Context, id uuid.UUID, lockTy
 
 	switch lockType {
 	case database.LockUpdate:
-		db.Clauses(clause.Locking{Strength: string(database.LockUpdate)})
+		db = db.Clauses(clause.Locking{Strength: string(database.LockUpdate)})
 	case database.LockShare:
-		db.Clauses(clause.Locking{Strength: string(database.LockShare)})
-
+		db = db.Clauses(clause.Locking{Strength: string(database.LockShare)})
 	}
 	err := db.First(&p, "id = ?", id).Error
 	return &p, err
