@@ -22,10 +22,12 @@ type AppConfig struct {
 	App        AppSection        `mapstructure:"app"`
 	Database   DatabaseSection   `mapstructure:"database"`
 	Redis      RedisSection      `mapstructure:"redis"`
+	RabbitMQ   RabbitMQSection   `mapstructure:"rabbitmq"`
 	Log        LogSection        `mapstructure:"log"`
 	Auth       AuthSection       `mapstructure:"auth"`
 	Otel       OtelSection       `mapstructure:"otel"`
 	TestImages TestImagesSection `mapstructure:"test_images"`
+	OrderMQ    OrderMQConfig     `mapstructure:"order_mq"`
 }
 
 type AppSection struct {
@@ -59,6 +61,13 @@ type RedisSection struct {
 	PoolSize int    `mapstructure:"pool_size"`
 }
 
+type RabbitMQSection struct {
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+}
+
 type LogSection struct {
 	ConsoleLevel string `mapstructure:"console_level"`
 	FileLevel    string `mapstructure:"file_level"`
@@ -86,6 +95,14 @@ type AuthSection struct {
 type TestImagesSection struct {
 	Postgres string `mapstructure:"postgres"`
 	Redis    string `mapstructure:"redis"`
+}
+
+type OrderMQConfig struct {
+	Exchange      string `mapstructure:"exchange"`
+	ConsumerQueue string `mapstructure:"consumer_queue"`
+	DelayQueue    string `mapstructure:"delay_queue"`
+	RoutingKey    string `mapstructure:"routing_key"`
+	TTLMs         int    `mapstructure:"ttl_ms"`
 }
 
 func Init() (*AppConfig, error) {
