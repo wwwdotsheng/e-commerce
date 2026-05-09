@@ -6,11 +6,13 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/middleware"
 	"e-commerce/internal/model"
+	"e-commerce/internal/order"
 	"e-commerce/internal/product"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/dbconn"
+	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"fmt"
@@ -73,6 +75,7 @@ func SetupRouter(
 	userSvc *user.Service,
 	walletSvc *wallet.Service,
 	productSvc *product.Service,
+	orderSvc *order.Service,
 	logger *zap.Logger,
 	mp *metric.MeterProvider,
 ) (*gin.Engine, error) {
@@ -124,6 +127,11 @@ func SetupRouter(
 		productGroup.PATCH("/:id", productH.UpdateProductProperty)
 		productGroup.POST("/:id/status", productH.UpdateProductStatus)
 		productGroup.DELETE("/:id", productH.DeleteProduct)
+
+		orderH := order.NewHandler(orderSvc)
+		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
+		orderGroup.POST("/create", orderH.CreateOrder)
+		orderGroup.GET("/list", orderH.ListOrders)
 	}
 	return r, nil
 }
@@ -162,6 +170,14 @@ func Run(ctx context.Context, config config.AppConfig) {
 		PoolSize: config.Redis.PoolSize,
 	})
 
+	mqCh, stop := mq.InitMq(ctx, logger, mq.Config{
+		User:     config.RabbitMQ.User,
+		Password: config.RabbitMQ.Password,
+		Host:     config.RabbitMQ.Host,
+		Port:     config.RabbitMQ.Port,
+	})
+	defer stop()
+
 	walletRepo := wallet.NewRepository(db, rdb)
 	walletSvc := wallet.NewService(walletRepo)
 
@@ -184,14 +200,14 @@ func Run(ctx context.Context, config config.AppConfig) {
 	if err != nil {
 		logger.Fatal("初始化order mq错误", zap.Error(err))
 	}
-	orderSvc := order.NewService(db, orderRepo)
+	orderSvc := order.NewService(db, orderRepo, productRepo)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {
 		logger.Error("启动订单消费者失败", zap.Error(err))
 	}
 
-	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}
