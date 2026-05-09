@@ -4,7 +4,6 @@ import (
 	"context"
 	"e-commerce/pkg/clog"
 	"fmt"
-	"log"
 
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -36,12 +35,19 @@ func (h *MqHandler) ListenTimeout(ctx context.Context, ch *amqp.Channel, queueNa
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				clog.L(ctx).Error("订单超时消费者 panic", zap.Any("recover", r))
+			}
+		}()
 		for {
 			select {
 			case <-ctx.Done():
+				clog.L(ctx).Info("订单超时消费者退出")
 				return
 			case d, ok := <-msgs:
 				if !ok {
+					clog.L(ctx).Info("订单超时消息通道已关闭")
 					return
 				}
 				h.handleSingleMessage(ctx, d)
@@ -56,7 +62,7 @@ func (h *MqHandler) handleSingleMessage(ctx context.Context, d amqp.Delivery) {
 	logger := clog.L(ctx)
 	orderID, err := uuid.Parse(string(d.Body))
 	if err != nil {
-		log.Printf("failed to parse the order id from message body: %s", string(d.Body))
+		clog.L(ctx).Error("无法从消息中解析订单ID", zap.String("body", string(d.Body)))
 		d.Reject(false)
 		return
 	}
