@@ -40,7 +40,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 		publisherID      uuid.UUID
 		buyerID          uuid.UUID
 		productID        uuid.UUID
-		lowStockProduct  uuid.UUID
+		lowStockProduct  = uuid.New()
 		accessToken      string
 	)
 
@@ -106,7 +106,6 @@ var _ = Describe("OrderApi", Ordered, func() {
 		testDB.Exec(`INSERT INTO products (id, publisher, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
 			productID, publisherID, "Test Item", "desc", 99.99, 10, 0, "active", 1)
 
-		lowStockProduct = uuid.New()
 		testDB.Exec(`INSERT INTO products (id, publisher, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
 			lowStockProduct, publisherID, "Low Stock", "desc", 9.99, 0, 0, "active", 1)
 
@@ -177,12 +176,13 @@ var _ = Describe("OrderApi", Ordered, func() {
 				"quantity":        1,
 				"idempotency_key": key,
 			})
-			Expect(resp2.Code).NotTo(Equal(errno.OK.FullCode()))
+			Expect(resp2.Code).To(Equal(errno.OK.FullCode()))
 		})
 	})
 
 	Describe("GET /api/v1/order/list", func() {
 		It("返回用户订单列表", func() {
+				testDB.Exec("DELETE FROM orders WHERE user_id = ?", buyerID)
 			for i := 0; i < 3; i++ {
 				key := fmt.Sprintf("list-data-%d-%d", i, time.Now().UnixNano())
 				doCreateOrder(accessToken, map[string]interface{}{

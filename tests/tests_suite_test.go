@@ -124,8 +124,8 @@ var _ = BeforeSuite(func() {
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        config.ImageRef(config.TestImages.RabbitMQ),
 			ExposedPorts: []string{"5672/tcp"},
-			WaitingFor: wait.ForLog("started TCP listener on 0.0.0.0:5672").
-				WithStartupTimeout(30 * time.Second),
+			WaitingFor: wait.ForLog("TCP listener on").
+				WithStartupTimeout(60 * time.Second),
 		},
 		Started: true,
 	})
@@ -162,7 +162,7 @@ var _ = BeforeSuite(func() {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := testDB.AutoMigrate(&model.User{}, &model.Product{}, &model.Order{}); err != nil {
+	if err := testDB.AutoMigrate(&model.User{}, &model.UserWallet{}, &model.WalletLog{}, &model.Product{}, &model.Order{}); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
 	testRedis = redis.Init(ctx, redis.Config{
