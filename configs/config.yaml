@@ -32,6 +32,9 @@ rabbitmq:
   host: "rabbitmq"
   port: 5672
 
+registry:
+  prefix: "harbor.local/dockerhub/"
+
 log:
   console_level: "debug"
   file_level: "debug"

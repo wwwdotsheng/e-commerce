@@ -71,7 +71,7 @@ var _ = BeforeSuite(func() {
 	// --- PostgreSQL ---
 	pgContainer, err = postgres.Run(
 		ctx,
-		config.TestImages.Postgres,
+		config.ImageRef(config.TestImages.Postgres),
 		postgres.WithDatabase(config.Database.DBName),
 		postgres.WithUsername(config.Database.User),
 		postgres.WithPassword(config.Database.Password),
@@ -101,7 +101,7 @@ var _ = BeforeSuite(func() {
 	// --- Redis ---
 	redisContainer, err = redis2.Run(
 		ctx,
-		config.TestImages.Redis,
+		config.ImageRef(config.TestImages.Redis),
 	)
 	if err != nil {
 		log.Fatalf("failed to start redis container: %v", err)
@@ -122,7 +122,7 @@ var _ = BeforeSuite(func() {
 	// --- RabbitMQ ---
 	rmqContainer, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "rabbitmq:3-alpine",
+			Image:        config.ImageRef(config.TestImages.RabbitMQ),
 			ExposedPorts: []string{"5672/tcp"},
 			WaitingFor: wait.ForLog("started TCP listener on 0.0.0.0:5672").
 				WithStartupTimeout(30 * time.Second),

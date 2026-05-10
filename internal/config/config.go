@@ -23,6 +23,7 @@ type AppConfig struct {
 	Database   DatabaseSection   `mapstructure:"database"`
 	Redis      RedisSection      `mapstructure:"redis"`
 	RabbitMQ   RabbitMQSection   `mapstructure:"rabbitmq"`
+	Registry   RegistrySection   `mapstructure:"registry"`
 	Log        LogSection        `mapstructure:"log"`
 	Auth       AuthSection       `mapstructure:"auth"`
 	Otel       OtelSection       `mapstructure:"otel"`
@@ -66,6 +67,10 @@ type RabbitMQSection struct {
 	Password string `mapstructure:"password"`
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
+}
+
+type RegistrySection struct {
+	Prefix string `mapstructure:"prefix"`
 }
 
 type LogSection struct {
@@ -117,6 +122,7 @@ func Init() (*AppConfig, error) {
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.BindEnv("registry.prefix", "IMAGE_REPOSITORY")
 	cfgPath := os.Getenv("CONFIG_PATH")
 	if cfgPath == "" {
 		cfgPath = "configs/config.yaml"
@@ -162,3 +168,8 @@ func (c *AppConfig) Validate() error {
 func (c *AppConfig) IsDev() bool  { return strings.ToUpper(c.App.Env) == EnvDev }
 func (c *AppConfig) IsTest() bool { return strings.ToUpper(c.App.Env) == EnvTest }
 func (c *AppConfig) IsProd() bool { return strings.ToUpper(c.App.Env) == EnvProd }
+
+// ImageRef 拼接 registry 前缀与镜像名
+func (c *AppConfig) ImageRef(image string) string {
+	return c.Registry.Prefix + image
+}
