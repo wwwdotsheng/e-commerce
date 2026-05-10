@@ -21,7 +21,7 @@ jobs:
         run: |
           go mod download
           go install github.com/onsi/ginkgo/v2/ginkgo
-          APP_ENV=test APP_REGISTRY_PREFIX="${IMAGE_REPOSITORY}" APP_OTEL_ENABLED=false CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
+          APP_ENV=test APP_REGISTRY_PREFIX="${IMAGE_REPOSITORY}" APP_OTEL_ENABLED=false APP_LOG_CONSOLE_LEVEL=error APP_DATABASE_LOG_LEVEL=error CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
 
       - name: Build and Push Docker Image
         run: |
