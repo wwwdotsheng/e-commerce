@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -65,6 +66,15 @@ func Init(ctx context.Context, logger Logger, config Config) *gorm.DB {
 	if err := db.Use(tracing.NewPlugin()); err != nil {
 		panic(err)
 	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic(fmt.Errorf("get sqlDB failed: %w", err))
+	}
+
+	sqlDB.SetMaxIdleConns(config.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(config.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(config.ConnMaxLifetime) * time.Minute)
 
 	logger.Info("连接数据库成功")
 	span.End()
