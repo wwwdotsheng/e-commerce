@@ -27,7 +27,7 @@ func (h *Handler) Deposit(c *gin.Context) {
 
 	var depositDTO DepositDTO
 	if err := c.ShouldBindJSON(&depositDTO); err != nil {
-		response.Write(c, errno.ErrInvalidParam.WithRaw(err), nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 

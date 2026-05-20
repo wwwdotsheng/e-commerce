@@ -29,7 +29,7 @@ func (h *Handler) CreateProduct(c *gin.Context) {
 	var body CreateProductBody
 
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -60,7 +60,7 @@ func (h *Handler) ListProducts(c *gin.Context) {
 
 	var query ListProductsQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -89,13 +89,13 @@ func (h *Handler) GetProduct(c *gin.Context) {
 
 	var uri UriWithProductID
 	if err := c.ShouldBindUri(&uri); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
 	productID, err := uuid.Parse(uri.ID)
 	if err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *Handler) DeleteProduct(c *gin.Context) {
 
 	var uri UriWithProductID
 	if err := c.ShouldBindUri(&uri); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -125,7 +125,7 @@ func (h *Handler) DeleteProduct(c *gin.Context) {
 
 	productID, err := uuid.Parse(uri.ID)
 	if err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -146,11 +146,11 @@ func (h *Handler) UpdateProductProperty(c *gin.Context) {
 	var uri UriWithProductID
 	var body UpdateProductPropertyBody
 	if err := c.ShouldBindUri(&uri); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 
 	}
@@ -163,7 +163,7 @@ func (h *Handler) UpdateProductProperty(c *gin.Context) {
 
 	productID, err := uuid.Parse(uri.ID)
 	if err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -187,11 +187,11 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 	var uri UriWithProductID
 	var body UpdateProductStatusBody
 	if err := c.ShouldBindUri(&uri); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -203,7 +203,7 @@ func (h *Handler) UpdateProductStatus(c *gin.Context) {
 
 	productID, err := uuid.Parse(uri.ID)
 	if err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 

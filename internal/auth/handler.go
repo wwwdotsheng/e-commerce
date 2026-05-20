@@ -26,7 +26,7 @@ func (h *Handler) Login(c *gin.Context) {
 
 	var loginDTO LoginDTO
 	if err := c.ShouldBindJSON(&loginDTO); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 	tokenPair, err := h.authSvc.Login(ctx, &LoginInput{

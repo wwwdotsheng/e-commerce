@@ -29,13 +29,13 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 
 	var body CreateOrderBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
 	productID, err := uuid.Parse(body.ProductID)
 	if err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
@@ -63,7 +63,7 @@ func (h *Handler) ListOrders(c *gin.Context) {
 
 	var query ListOrdersQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 

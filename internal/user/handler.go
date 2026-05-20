@@ -4,7 +4,6 @@ import (
 	"e-commerce/internal/auth"
 	"e-commerce/internal/pkg/response"
 	"e-commerce/pkg/clog"
-	"e-commerce/pkg/errno"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -36,7 +35,7 @@ func (h *Handler) Register(c *gin.Context) {
 
 	var registerDTO RegisterDTO
 	if err := c.ShouldBindJSON(&registerDTO); err != nil {
-		response.Write(c, errno.ErrInvalidParam, nil)
+		response.WriteInvalidParam(c, err)
 		return
 	}
 
