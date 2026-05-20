@@ -1,0 +1,595 @@
+openapi: "3.1.0"
+info:
+  title: E-Commerce API
+  description: |
+    电商后端 API，支持用户认证、商品管理、钱包充值、订单管理。
+
+    ## 通用错误码
+
+    所有接口都可能返回以下错误：
+
+    - B01001 系统繁忙
+    - A00101 参数错误
+
+    需要鉴权的接口还可能返回：
+    - A02103 token 无效
+    - A02101 token 已过期
+    - A02102 账号已在别处登录
+
+    每个接口特有的业务码在对应接口的 description 中列出。
+  version: "1.0"
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local dev
+
+paths:
+  /auth/login:
+    post:
+      tags: [认证]
+      summary: 用户登录
+      operationId: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: |
+            00000 成功，返回 access_token 和 refresh_token
+            特有错误：A01103 账号或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/fetch-access-token:
+    post:
+      tags: [认证]
+      summary: 刷新 AccessToken
+      operationId: FetchAccessToken
+      security:
+        - RefreshTokenAuth: []
+      responses:
+        '200':
+          description: |
+            00000 成功，返回新的 access_token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /auth/fetch-refresh-token:
+    post:
+      tags: [认证]
+      summary: 刷新 RefreshToken
+      operationId: FetchRefreshToken
+      security:
+        - AccessTokenAuth: []
+      responses:
+        '200':
+          description: |
+            00000 成功，返回新的 refresh_token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+
+  /auth/logout:
+    post:
+      tags: [认证]
+      summary: 退出登录
+      operationId: Logout
+      security:
+        - AccessTokenAuth: []
+      responses:
+        '200':
+          description: |
+            00000 退出成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /user/register:
+    post:
+      tags: [用户]
+      summary: 用户注册
+      operationId: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: |
+            00000 注册成功
+            特有错误：A01102 用户名或邮箱已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /wallet/deposit:
+    post:
+      tags: [钱包]
+      summary: 钱包充值
+      operationId: Deposit
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+      responses:
+        '200':
+          description: |
+            00000 充值成功
+            特有错误：A03101 充值金额非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /product/create:
+    post:
+      tags: [商品]
+      summary: 创建商品
+      operationId: CreateProduct
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+      responses:
+        '200':
+          description: |
+            00000 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /product/list:
+    get:
+      tags: [商品]
+      summary: 商品列表
+      operationId: ListProducts
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+
+  /product/{id}:
+    get:
+      tags: [商品]
+      summary: 商品详情
+      operationId: GetProduct
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            00000 成功
+            特有错误：A04102 商品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+
+    patch:
+      tags: [商品]
+      summary: 更新商品属性
+      operationId: UpdateProductProperty
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductPropertyRequest'
+      responses:
+        '200':
+          description: |
+            00000 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+    delete:
+      tags: [商品]
+      summary: 删除商品
+      operationId: DeleteProduct
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            00000 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /product/{id}/status:
+    post:
+      tags: [商品]
+      summary: 更新商品状态
+      operationId: UpdateProductStatus
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductStatusRequest'
+      responses:
+        '200':
+          description: |
+            00000 更新成功
+            特有错误：A04103 商品状态参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /order/create:
+    post:
+      tags: [订单]
+      summary: 创建订单
+      operationId: CreateOrder
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: |
+            00000 下单成功
+            特有错误：A04101 库存不足、A05100 商品 ID 不存在
+            注意：幂等键重复时不返回错误，视为成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
+  /order/list:
+    get:
+      tags: [订单]
+      summary: 订单列表
+      operationId: ListOrders
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListResponse'
+
+components:
+  securitySchemes:
+    AccessTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 登录后获取的 access_token
+    RefreshTokenAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 登录时返回的 refresh_token
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [code, userMsg]
+      properties:
+        code:
+          type: string
+          description: 业务码
+        userMsg:
+          type: string
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+
+    TokenResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                refresh_token:
+                  type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 32
+
+    LoginResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TokenPair'
+
+    RegisterRequest:
+      type: object
+      required: [user_name, email, password]
+      properties:
+        user_name:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: "^[a-zA-Z0-9_\\u4e00-\\u9fa5]+$"
+          example: zhangsan
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 32
+
+    DepositRequest:
+      type: object
+      required: [amount, idempotency_key]
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+          description: 充值金额，必须大于 0
+        idempotency_key:
+          type: string
+          description: 幂等键，防止重复充值
+
+    CreateProductRequest:
+      type: object
+      required: [name, description, price, status, stock]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 3000
+        price:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+        status:
+          type: string
+          enum: [active, inactive]
+        stock:
+          type: integer
+          minimum: 0
+
+    UpdateProductPropertyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 3000
+        price:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+
+    UpdateProductStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+
+    ProductItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        publisher:
+          type: string
+          format: uuid
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProductItem'
+        - type: object
+          properties:
+            description:
+              type: string
+
+    ProductListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                products:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ProductItem'
+                total:
+                  type: integer
+
+    ProductDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ProductDetail'
+
+    CreateOrderRequest:
+      type: object
+      required: [product_id, quantity, idempotency_key]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        idempotency_key:
+          type: string
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        product_name:
+          type: string
+        quantity:
+          type: integer
+        total_price:
+          type: number
+          format: float
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    OrderListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                orders:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/OrderItem'
+                total:
+                  type: integer

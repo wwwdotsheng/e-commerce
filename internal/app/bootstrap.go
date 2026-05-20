@@ -96,6 +96,9 @@ func SetupRouter(
 	r.Use(middleware.TraceMiddleware("e-commerce"))
 	r.Use(middleware.RequestLogMiddleware())
 
+	r.GET("/swagger/doc.yaml", swaggerDoc)
+	r.GET("/swagger", swaggerUI)
+
 	v1 := r.Group("/api/v1")
 	{
 		h := auth.NewHandler(authSvc)
