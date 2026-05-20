@@ -92,5 +92,6 @@ func (svc *Service) UpdateProductStock(ctx context.Context, param UpdateProductS
 		ProductID: param.ProductID,
 		Publisher: param.Publisher,
 		Quantity:  param.Quantity,
+		Reason:    param.Reason,
 	})
 }

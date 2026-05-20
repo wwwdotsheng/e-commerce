@@ -77,65 +77,80 @@ type UpdateStockData struct {
 	ProductID uuid.UUID
 	Publisher uuid.UUID
 	Quantity  int
+	Reason    model.StockChangeReason
 }
 
-// TODO(8)[2026-04-29] 为model.Product添加一个商品库存记录变化表, 标记是什么原因减少的库存
-// TODO(3)[2026-04-29]
-//  假设这样一个需求, 假如买到一半发现商品没货了怎么办？这时候商家需要紧急调整库存或商品状态
-//  好像可以直接调整商品状态为缺货好点，假设商家设置了99999+库存，这样可以直接调整为缺货
+// createStockChangeLog 记录库存变动
+func (repo *Repository) createStockChangeLog(ctx context.Context, productID uuid.UUID, quantity, before int, reason model.StockChangeReason) error {
+	return repo.GetDB(ctx).Create(&model.StockChangeLog{
+		ProductID: productID,
+		Quantity:  quantity,
+		Before:    before,
+		After:     before + quantity,
+		Reason:    reason,
+	}).Error
+}
 
-// UpdateStock 更新商品
+// UpdateStock 更新商品库存（校验 publisher）
 func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) error {
 	db := repo.GetDB(ctx).Model(&model.Product{}).Where("id = ? and publisher = ?", data.ProductID, data.Publisher)
 	if data.Quantity < 0 {
 		db = db.Where("stock >= ?", -data.Quantity)
 	}
 
-	var updatedID uuid.UUID
-	// TODO(4)[2026-04-29] 这样声明结构体的话会不会在调用方法的时候反复声明导致资源损耗
-	type UpdateResult struct {
+	var result struct {
 		ID    uuid.UUID
 		Stock int
 	}
-	result := db.
-		// TODO(5)[2026-04-29] 这里为什么只需要updatedID？为什么不是使用&model.product去接受？
-		Clauses(clause.Returning{Columns: []clause.Column{{
-			Name: "id",
-		}}}).
+	err := db.
+		Clauses(clause.Returning{Columns: []clause.Column{
+			{Name: "id"},
+			{Name: "stock"},
+		}}).
 		Updates(map[string]interface{}{
 			"stock":      gorm.Expr("stock + ?", data.Quantity),
 			"version":    gorm.Expr("version + 1"),
 			"updated_at": time.Now(),
 		}).
-		// TODO(6)[2026-04-29] 这里Scan的原理是什么？
-		Scan(&updatedID)
-	if result.Error != nil {
-		return result.Error
+		Scan(&result).Error
+	if err != nil {
+		return err
 	}
 
-	// TODO(7)[2026-04-29] 这里如何分离库存不足和商品不存在的错误
-	if result.RowsAffected == 0 {
+	if result.ID == uuid.Nil {
 		return errors.New("update failed: insufficient stock or product not found")
 	}
-	return nil
+
+	return repo.createStockChangeLog(ctx, data.ProductID, data.Quantity, result.Stock-data.Quantity, data.Reason)
 }
 
 // DeductStock 下单扣减库存（无 publisher 校验，事务内使用）
 func (repo *Repository) DeductStock(ctx context.Context, productID uuid.UUID, quantity int) error {
-	result := repo.GetDB(ctx).Model(&model.Product{}).
+	var result struct {
+		ID    uuid.UUID
+		Stock int
+	}
+	err := repo.GetDB(ctx).Model(&model.Product{}).
 		Where("id = ? AND stock >= ?", productID, quantity).
+		Clauses(clause.Returning{Columns: []clause.Column{
+			{Name: "id"},
+			{Name: "stock"},
+		}}).
 		Updates(map[string]interface{}{
 			"stock":      gorm.Expr("stock - ?", quantity),
 			"version":    gorm.Expr("version + 1"),
 			"updated_at": time.Now(),
-		})
-	if result.Error != nil {
-		return result.Error
+		}).
+		Scan(&result).Error
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected == 0 {
+
+	if result.ID == uuid.Nil {
 		return errno.ErrProductStockInsufficient
 	}
-	return nil
+
+	return repo.createStockChangeLog(ctx, productID, -quantity, result.Stock+quantity, model.StockChangeOrder)
 }
 
 func (repo *Repository) UpdateProperty(ctx context.Context, p *model.Product) error {

@@ -42,4 +42,5 @@ type UpdateProductStockParam struct {
 	ProductID uuid.UUID
 	Publisher uuid.UUID
 	Quantity  int
+	Reason    model.StockChangeReason
 }
