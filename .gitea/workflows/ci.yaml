@@ -8,12 +8,12 @@ jobs:
       GOPROXY: https://goproxy.cn,direct
 
     steps:
-      - uses: https://gitea.internal:3000/actions/checkout@v3
+      - uses: https://gitea.internal/actions/checkout@v3
 
       - name: Set up Go
-        uses: https://gitea.internal:3000/actions/setup-go@v4
+        uses: https://gitea.internal/actions/setup-go@v4
         with:
-          go-version: '1.23'
+          go-version: '1.25.4'
 
       - name: Run Ginkgo Tests
         env:
