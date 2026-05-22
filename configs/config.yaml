@@ -33,7 +33,7 @@ rabbitmq:
   port: 5672
 
 registry:
-  prefix: "harbor.local/dockerhub/"
+  prefix: "harbor.internal/dockerhub/"
 
 log:
   console_level: "debug"

@@ -1,5 +1,5 @@
 # 构建阶段 (也作为开发环境)
-FROM harbor.local/dockerhub/golang:1.25.6-alpine AS builder
+FROM harbor.internal/dockerhub/golang:1.25.6-alpine AS builder
 WORKDIR /app
 
 RUN go env -w GOPROXY=https://goproxy.cn,direct
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/go/pkg/mod\
     go build -o main ./cmd/
 
 # 运行阶段 (仅用于生产环境打包)
-FROM harbor.local/dockerhub/alpine:latest
+FROM harbor.internal/dockerhub/alpine:latest
 WORKDIR /app
 # 安装时区数据
 RUN apk add --no-cache tzdata
