@@ -162,7 +162,14 @@ var _ = BeforeSuite(func() {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := testDB.AutoMigrate(&model.User{}, &model.UserWallet{}, &model.WalletLog{}, &model.Product{}, &model.Order{}); err != nil {
+	if err := testDB.AutoMigrate(
+		&model.User{},
+		&model.UserWallet{},
+		&model.WalletLog{},
+		&model.Product{},
+		&model.Order{},
+		&model.StockChangeLog{},
+	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
 	testRedis = redis.Init(ctx, redis.Config{

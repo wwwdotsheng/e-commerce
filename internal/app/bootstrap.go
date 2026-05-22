@@ -162,6 +162,7 @@ func Run(ctx context.Context, config config.AppConfig) {
 		&model.WalletLog{},
 		&model.Product{},
 		&model.Order{},
+		&model.StockChangeLog{},
 	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
