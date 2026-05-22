@@ -17,7 +17,7 @@ jobs:
 
       - name: Run Ginkgo Tests
         env:
-          IMAGE_REPOSITORY: harbor.local/dockerhub/
+          IMAGE_REPOSITORY: harbor.internal/dockerhub/
         run: |
           go mod download
           go install github.com/onsi/ginkgo/v2/ginkgo
@@ -25,9 +25,9 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.local -u "${{ secrets.HARBOR_USER }}" --password-stdin
+          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.internal -u "${{ secrets.HARBOR_USER }}" --password-stdin
           SHORT_SHA=$(echo "${{ gitea.sha }}" | cut -c1-7)
-          IMAGE_TAG=harbor.local/my-project/e-commerce:$SHORT_SHA
+          IMAGE_TAG=harbor.internal/my-project/e-commerce:$SHORT_SHA
           
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
