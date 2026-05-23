@@ -15,15 +15,35 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var accessToken string
+var refreshToken string
+
+type LoginData struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+func doLogin(email, password string) (*httptest.ResponseRecorder, Response) {
+	dto := map[string]string{
+		"email":    email,
+		"password": password,
+	}
+	body, _ := json.Marshal(dto)
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+
+	var resp Response
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	fmt.Fprintf(GinkgoWriter, "%s", w.Body.String())
+	return w, resp
+}
+
 var _ = Describe("AuthApi", Ordered, func() {
 	insertUserId, err := uuid.NewV7()
 	if err != nil {
 		panic(err)
-	}
-
-	type LoginData struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
 	}
 
 	var cleanup = func() {
@@ -35,26 +55,6 @@ var _ = Describe("AuthApi", Ordered, func() {
 		}
 		testRedis.Del(ctx, fmt.Sprintf("ident:u_sess:%s", insertUserId))
 	}
-
-	var doLogin = func(email, password string) (*httptest.ResponseRecorder, Response) {
-		dto := map[string]string{
-			"email":    email,
-			"password": password,
-		}
-		body, _ := json.Marshal(dto)
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBuffer(body))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		testRouter.ServeHTTP(w, req)
-
-		var resp Response
-		_ = json.Unmarshal(w.Body.Bytes(), &resp)
-		fmt.Fprintf(GinkgoWriter, "%s", w.Body.String())
-		return w, resp
-	}
-
-	var accessToken string
-	var refreshToken string
 
 	BeforeAll(func() {
 		cleanup()
