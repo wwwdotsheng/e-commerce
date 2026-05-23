@@ -15,6 +15,7 @@ import (
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -61,6 +62,10 @@ var (
 var logger *zap.Logger
 
 var _ = BeforeSuite(func() {
+	if os.Getenv("CONFIG_PATH") == "" {
+		os.Setenv("CONFIG_PATH", "../configs/config.yaml")
+	}
+
 	ctx, stop, config, err := app.Bootstrap()
 	if err != nil {
 		log.Fatalf("应用启动失败：%v", err)
