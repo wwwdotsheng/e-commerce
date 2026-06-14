@@ -44,7 +44,7 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 
 	otelShutdown, err := setupOTelSDK(ctx, conf.Otel)
 	if err != nil {
-		fmt.Printf("otel sdk初始化失败：%v", err)
+		fmt.Printf("otel sdk初始化失败：%v\n", err)
 	}
 
 	// --- 日志初始化
@@ -96,6 +96,10 @@ func SetupRouter(
 	r.Use(middleware.TraceMiddleware("e-commerce"))
 	r.Use(middleware.RequestLogMiddleware())
 
+	// 健康检查（不限流）
+	r.GET("/health", HealthHandler)
+	r.GET("/ready", ReadyHandler)
+
 	r.GET("/swagger/doc.yaml", swaggerDoc)
 	r.GET("/swagger", swaggerUI)
 
@@ -105,7 +109,10 @@ func SetupRouter(
 		accessTokenAuthMiddleware := middleware.AccessTokenAuth(authSvc)
 		refreshTokenAuthMiddleware := middleware.RefreshTokenAuth(authSvc)
 
-		v1.POST("/auth/login", h.Login)
+		// 登录接口限流
+		loginGroup := v1.Group("")
+		loginGroup.Use(middleware.RateLimitMiddleware(5, 10))
+		loginGroup.POST("/auth/login", h.Login)
 
 		authGroup := v1.Group("/auth").Use(accessTokenAuthMiddleware)
 		authGroup.POST("/fetch-refresh-token", h.FetchRefreshToken)
@@ -139,11 +146,11 @@ func SetupRouter(
 	return r, nil
 }
 
-func Run(ctx context.Context, config config.AppConfig) {
+func Run(ctx context.Context, config config.AppConfig) error {
 	logger := clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
-	db := dbconn.Init(ctx, logger, dbconn.Config{
+	db, err := dbconn.Init(ctx, logger, dbconn.Config{
 		Host:            config.Database.Host,
 		Port:            config.Database.Port,
 		User:            config.Database.User,
@@ -156,31 +163,44 @@ func Run(ctx context.Context, config config.AppConfig) {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := db.AutoMigrate(
-		&model.User{},
-		&model.UserWallet{},
-		&model.WalletLog{},
-		&model.Product{},
-		&model.Order{},
-		&model.StockChangeLog{},
-	); err != nil {
-		logger.Fatal("数据库AutoMigrate失败")
+	if err != nil {
+		return fmt.Errorf("数据库初始化失败: %w", err)
 	}
-	rdb := redis.Init(ctx, redis.Config{
+
+	if !config.IsProd() {
+		if err := db.AutoMigrate(
+			&model.User{},
+			&model.UserWallet{},
+			&model.WalletLog{},
+			&model.Product{},
+			&model.Order{},
+			&model.StockChangeLog{},
+		); err != nil {
+			return fmt.Errorf("数据库 AutoMigrate 失败: %w", err)
+		}
+	}
+
+	rdb, err := redis.Init(ctx, redis.Config{
 		Host:     config.Redis.Host,
 		Port:     config.Redis.Port,
 		Password: config.Redis.Password,
 		DB:       config.Redis.DB,
 		PoolSize: config.Redis.PoolSize,
 	})
+	if err != nil {
+		return fmt.Errorf("Redis 初始化失败: %w", err)
+	}
 
-	mqCh, stop := mq.InitMq(ctx, logger, mq.Config{
+	mqCh, mqCleanup, err := mq.InitMq(ctx, logger, mq.Config{
 		User:     config.RabbitMQ.User,
 		Password: config.RabbitMQ.Password,
 		Host:     config.RabbitMQ.Host,
 		Port:     config.RabbitMQ.Port,
 	})
-	defer stop()
+	if err != nil {
+		return fmt.Errorf("RabbitMQ 初始化失败: %w", err)
+	}
+	defer mqCleanup()
 
 	walletRepo := wallet.NewRepository(db, rdb)
 	walletSvc := wallet.NewService(walletRepo)
@@ -200,31 +220,36 @@ func Run(ctx context.Context, config config.AppConfig) {
 	productSvc := product.NewService(db, productRepo)
 
 	orderRepo := order.NewRepository(db, mqCh, &config.OrderMQ)
-	err = orderRepo.SetupMQ(&config.OrderMQ)
-	if err != nil {
-		logger.Fatal("初始化order mq错误", zap.Error(err))
+	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
+		return fmt.Errorf("初始化 order MQ 失败: %w", err)
 	}
 	orderSvc := order.NewService(db, orderRepo, productRepo)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {
-		logger.Error("启动订单消费者失败", zap.Error(err))
+		return fmt.Errorf("启动订单消费者失败: %w", err)
 	}
 
 	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, logger, &mp)
 	if err != nil {
-		logger.Fatal("初始化路由失败", zap.Error(err))
+		return fmt.Errorf("初始化路由失败: %w", err)
 	}
 
-	// --- 服务启动
+	// 注入 DB/Redis/MQ 用于健康检查
+	healthDB = db
+	healthRDB = rdb
+	healthMQCh = mqCh
+
 	addr := fmt.Sprintf("0.0.0.0:%d", config.App.Port)
 	if config.App.SSL {
 		if err := r.RunTLS(addr, config.App.SSLCrtPath, config.App.SSLKeyPath); err != nil {
-			logger.Fatal("TLS服务器启动失败", zap.Error(err))
+			return fmt.Errorf("TLS 服务器启动失败: %w", err)
 		}
 	} else {
 		if err := r.Run(addr); err != nil {
-			logger.Fatal("服务器启动失败", zap.Error(err))
+			return fmt.Errorf("服务器启动失败: %w", err)
 		}
 	}
+
+	return nil
 }

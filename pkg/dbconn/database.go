@@ -48,8 +48,9 @@ func parseLevel(l string) dbLogger.LogLevel {
 	}
 }
 
-func Init(ctx context.Context, logger Logger, config Config) *gorm.DB {
+func Init(ctx context.Context, logger Logger, config Config) (*gorm.DB, error) {
 	ctx, span := otel.Tracer("database").Start(ctx, "Connecting")
+	defer span.End()
 
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%d sslmode=%s TimeZone=%s",
@@ -60,16 +61,16 @@ func Init(ctx context.Context, logger Logger, config Config) *gorm.DB {
 		Logger: dbLogger.Default.LogMode(parseLevel(config.LogLevel)),
 	})
 	if err != nil {
-		logger.Error("连接数据库失败", zap.Error(err))
-		panic("连接数据库失败")
+		return nil, fmt.Errorf("连接数据库失败: %w", err)
 	}
+
 	if err := db.Use(tracing.NewPlugin()); err != nil {
-		panic(err)
+		return nil, fmt.Errorf("注册 tracing 插件失败: %w", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		panic(fmt.Errorf("get sqlDB failed: %w", err))
+		return nil, fmt.Errorf("获取 sqlDB 失败: %w", err)
 	}
 
 	sqlDB.SetMaxIdleConns(config.MaxIdleConns)
@@ -77,7 +78,6 @@ func Init(ctx context.Context, logger Logger, config Config) *gorm.DB {
 	sqlDB.SetConnMaxLifetime(time.Duration(config.ConnMaxLifetime) * time.Minute)
 
 	logger.Info("连接数据库成功")
-	span.End()
 
-	return db
+	return db, nil
 }

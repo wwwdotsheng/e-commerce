@@ -15,12 +15,17 @@ type Config struct {
 	PoolSize int
 }
 
-func Init(ctx context.Context, config Config) *redis.Client {
+func Init(ctx context.Context, config Config) (*redis.Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Host, config.Port),
 		Password: config.Password,
 		DB:       config.DB,
 		PoolSize: config.PoolSize,
 	})
-	return rdb
+
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		return nil, fmt.Errorf("Redis 连接失败: %w", err)
+	}
+
+	return rdb, nil
 }

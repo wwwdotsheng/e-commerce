@@ -24,18 +24,16 @@ func InitMq(
 	ctx context.Context,
 	logger Logger,
 	config Config,
-) (*amqp.Channel, func()) {
+) (*amqp.Channel, func(), error) {
 	conn, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s:%d", config.User, config.Password, config.Host, config.Port))
 	if err != nil {
-		logger.Error("无法连接 RabbitMQ:", zap.Error(err))
-		panic("连接rabbit-mq失败")
+		return nil, nil, fmt.Errorf("连接 RabbitMQ 失败: %w", err)
 	}
 
 	ch, err := conn.Channel()
 	if err != nil {
 		conn.Close()
-		logger.Error("无法开启 Channel", zap.Error(err))
-		panic("开启Channel失败")
+		return nil, nil, fmt.Errorf("开启 Channel 失败: %w", err)
 	}
 
 	logger.Info("连接rabbit-mq成功")
@@ -49,5 +47,5 @@ func InitMq(
 		}
 	}
 
-	return ch, cleanup
+	return ch, cleanup, nil
 }

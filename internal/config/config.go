@@ -160,6 +160,15 @@ func (c *AppConfig) Validate() error {
 	if c.Database.User == "" {
 		return errors.New("database.user required")
 	}
+	if c.Database.Password == "" {
+		return errors.New("database.password required (ENV: APP_DATABASE_PASSWORD)")
+	}
+	if c.RabbitMQ.Password == "" {
+		return errors.New("rabbitmq.password required (ENV: APP_RABBITMQ_PASSWORD)")
+	}
+	if c.IsProd() && (c.Auth.TokenSecret == "" || c.Auth.TokenSecret == "12345678") {
+		return errors.New("auth.token_secret must be a strong, non-default value in production (ENV: APP_AUTH_TOKEN_SECRET)")
+	}
 	return nil
 }
 

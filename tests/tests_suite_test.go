@@ -64,6 +64,7 @@ var logger *zap.Logger
 var _ = BeforeSuite(func() {
 	if os.Getenv("CONFIG_PATH") == "" {
 		os.Setenv("CONFIG_PATH", "../configs/config.yaml")
+		os.Setenv("APP_APP_ENV", "test")
 	}
 
 	ctx, stop, config, err := app.Bootstrap()
@@ -154,7 +155,7 @@ var _ = BeforeSuite(func() {
 	logger = clog.L(ctx)
 	mp := otel.GetMeterProvider()
 
-	testDB = dbconn.Init(ctx, logger, dbconn.Config{
+	testDB, err = dbconn.Init(ctx, logger, dbconn.Config{
 		Host:            config.Database.Host,
 		Port:            config.Database.Port,
 		User:            config.Database.User,
@@ -177,7 +178,7 @@ var _ = BeforeSuite(func() {
 	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
-	testRedis = redis.Init(ctx, redis.Config{
+	testRedis, err = redis.Init(ctx, redis.Config{
 		Host:     config.Redis.Host,
 		Port:     config.Redis.Port,
 		Password: config.Redis.Password,
@@ -185,7 +186,7 @@ var _ = BeforeSuite(func() {
 		PoolSize: config.Redis.PoolSize,
 	})
 
-	mqCh, mqCleanup = mq.InitMq(ctx, logger, mq.Config{
+	mqCh, mqCleanup, err = mq.InitMq(ctx, logger, mq.Config{
 		User:     config.RabbitMQ.User,
 		Password: config.RabbitMQ.Password,
 		Host:     config.RabbitMQ.Host,

@@ -44,7 +44,7 @@ func setupOTelSDK(ctx context.Context, conf config.OtelSection) (func(context.Co
 	otel.SetTextMapPropagator(prop)
 
 	// 初始化 trace 提供者。
-	tracerProvider, err := newTracerProvider(conf)
+	tracerProvider, err := newTracerProvider(ctx, conf)
 	if err != nil {
 		handleErr(err)
 		return shutdown, err
@@ -53,7 +53,7 @@ func setupOTelSDK(ctx context.Context, conf config.OtelSection) (func(context.Co
 	otel.SetTracerProvider(tracerProvider)
 
 	// 初始化 Meter 提供者。
-	meterProvider, err := newMeterProvider(conf)
+	meterProvider, err := newMeterProvider(ctx, conf)
 	if err != nil {
 		handleErr(err)
 		return shutdown, err
@@ -71,33 +71,28 @@ func newPropagator() propagation.TextMapPropagator {
 	)
 }
 
-func newTracerProvider(conf config.OtelSection) (*trace.TracerProvider, error) {
+func newTracerProvider(ctx context.Context, conf config.OtelSection) (*trace.TracerProvider, error) {
 	if !conf.Enabled {
 		return trace.NewTracerProvider(), nil
 	}
-	ctx := context.Background()
 
-	// 创建 OTLP gRPC 导出器，指向 Tempo 的 4317 端口
 	traceExporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint("tempo:4317"),
-		otlptracegrpc.WithInsecure(), // 本地调试用
+		otlptracegrpc.WithEndpoint(conf.Endpoint.Trace),
+		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// 配置资源信息
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("app"),
+			semconv.ServiceNameKey.String(conf.ServiceName),
 		),
 	)
-
 	if err != nil {
 		return nil, err
 	}
 
-	// 创建 TracerProvider
 	tracerProvider := trace.NewTracerProvider(
 		trace.WithBatcher(traceExporter),
 		trace.WithResource(res),
@@ -106,11 +101,11 @@ func newTracerProvider(conf config.OtelSection) (*trace.TracerProvider, error) {
 	return tracerProvider, nil
 }
 
-func newMeterProvider(conf config.OtelSection) (*metric.MeterProvider, error) {
+func newMeterProvider(ctx context.Context, conf config.OtelSection) (*metric.MeterProvider, error) {
 	if !conf.Enabled {
 		return metric.NewMeterProvider(), nil
 	}
-	ctx := context.Background()
+
 	metricExporter, err := otlpmetrichttp.New(
 		ctx,
 		otlpmetrichttp.WithEndpoint(conf.Endpoint.Metric),
@@ -123,7 +118,6 @@ func newMeterProvider(conf config.OtelSection) (*metric.MeterProvider, error) {
 
 	meterProvider := metric.NewMeterProvider(
 		metric.WithReader(metric.NewPeriodicReader(metricExporter,
-			// 默认采集间隔为 1 分钟，这里设置为 3 秒用于演示。
 			metric.WithInterval(3*time.Second))),
 	)
 
