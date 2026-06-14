@@ -10,6 +10,9 @@ import (
 	"go.uber.org/zap"
 )
 
+const maxRetryHeader = "x-retry-count"
+const maxRetries = 3
+
 type MqHandler struct {
 	svc *Service
 }
@@ -62,8 +65,12 @@ func (h *MqHandler) handleSingleMessage(ctx context.Context, d amqp.Delivery) {
 	logger := clog.L(ctx)
 	orderID, err := uuid.Parse(string(d.Body))
 	if err != nil {
-		clog.L(ctx).Error("无法从消息中解析订单ID", zap.String("body", string(d.Body)))
-		d.Reject(false)
+		logger.Error("无法从消息中解析订单ID",
+			zap.String("body", string(d.Body)),
+			zap.String("message_id", d.MessageId),
+		)
+		// 格式错误的消息无法重试，直接丢弃（或可转发到死信队列）
+		_ = d.Reject(false)
 		return
 	}
 
@@ -71,10 +78,51 @@ func (h *MqHandler) handleSingleMessage(ctx context.Context, d amqp.Delivery) {
 	err = h.svc.HandleOrderTimeout(ctx, orderID)
 
 	if err != nil {
-		logger.Error("order failed to process the message", zap.Error(err))
-		d.Nack(false, true)
+		retryCount := getRetryCount(d.Headers)
+		if retryCount >= maxRetries {
+			logger.Error("订单超时处理达到最大重试次数，丢弃消息",
+				zap.String("order_id", orderID.String()),
+				zap.Int("retry_count", retryCount),
+				zap.Error(err),
+			)
+			_ = d.Reject(false) // 不重新入队
+			return
+		}
+		logger.Warn("订单超时处理失败，将重新入队",
+			zap.String("order_id", orderID.String()),
+			zap.Int("retry_count", retryCount),
+			zap.Error(err),
+		)
+		// 更新重试计数并重新入队
+		if d.Headers == nil {
+			d.Headers = amqp.Table{}
+		}
+		d.Headers[maxRetryHeader] = retryCount + 1
+		_ = d.Nack(false, true)
 		return
 	}
 
-	d.Ack(false)
+	_ = d.Ack(false)
+}
+
+func getRetryCount(headers amqp.Table) int {
+	if headers == nil {
+		return 0
+	}
+	v, ok := headers[maxRetryHeader]
+	if !ok {
+		return 0
+	}
+	switch val := v.(type) {
+	case int:
+		return val
+	case int32:
+		return int(val)
+	case int64:
+		return int(val)
+	case float64:
+		return int(val)
+	default:
+		return 0
+	}
 }

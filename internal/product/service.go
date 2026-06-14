@@ -51,7 +51,9 @@ func (svc *Service) DeleteProduct(ctx context.Context, param DeleteProductParam)
 	return svc.repo.Update(ctx, UpdateProductPropertyData{
 		ProductID: param.ProductID,
 		Publisher: param.Publisher,
-		Data:      map[string]interface{}{},
+		Data: map[string]interface{}{
+			"status": model.ProductStatusInactive,
+		},
 	})
 }
 

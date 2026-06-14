@@ -67,6 +67,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			zap.String("order_id", order.ID.String()),
 			zap.Error(err),
 		)
+		return fmt.Errorf("订单已创建但超时调度失败: %w", err)
 	}
 	return nil
 }

@@ -153,14 +153,6 @@ func (repo *Repository) DeductStock(ctx context.Context, productID uuid.UUID, qu
 	return repo.createStockChangeLog(ctx, productID, -quantity, result.Stock+quantity, model.StockChangeOrder)
 }
 
-func (repo *Repository) UpdateProperty(ctx context.Context, p *model.Product) error {
-	p.UpdatedAt = time.Now()
-	return repo.GetDB(ctx).Model(p).
-		Where("id = ?", p.ID).
-		Select([]string{"id", "publisher", "created_at"}).
-		Updates(p).Error
-}
-
 type ListProductsData struct {
 	PageNum  int
 	PageSize int
