@@ -17,7 +17,7 @@ database:
   max_open_conns: 100
   conn_max_lifetime: 10
   time_zone: "Asia/Shanghai"
-  log_level: "error"
+  log_level: "info"
 
 redis:
   host: "redis"
@@ -25,6 +25,15 @@ redis:
   password:
   db: 0
   pool_size: 10
+
+rabbitmq:
+  user: "guest"
+  password: "guest"
+  host: "rabbitmq"
+  port: 5672
+
+registry:
+  prefix: "harbor.internal/dockerhub/"
 
 log:
   console_level: "debug"
@@ -49,3 +58,12 @@ otel:
 test_images:
   postgres: "postgres:15-alpine"
   redis: "redis:7-alpine"
+  rabbitmq: "rabbitmq:3-alpine"
+
+
+order_mq:
+  exchange: "dlx_exchange"
+  consumer_queue: "order_timeout_queue"
+  delay_queue: "order_delay_queue"
+  routing_key: "timeout"
+  ttl_ms: 30000

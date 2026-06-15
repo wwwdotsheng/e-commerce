@@ -11,6 +11,11 @@ import (
 	"go.uber.org/zap"
 )
 
+// WriteInvalidParam 参数校验失败快捷方式，自动包装原始错误便于调试
+func WriteInvalidParam(c *gin.Context, err error) {
+	Write(c, errno.ErrInvalidParam.WithRaw(err), nil)
+}
+
 func Write(c *gin.Context, err error, data interface{}) {
 	ctx := c.Request.Context()
 	logger := clog.L(ctx)

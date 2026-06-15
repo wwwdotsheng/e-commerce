@@ -22,10 +22,13 @@ type AppConfig struct {
 	App        AppSection        `mapstructure:"app"`
 	Database   DatabaseSection   `mapstructure:"database"`
 	Redis      RedisSection      `mapstructure:"redis"`
+	RabbitMQ   RabbitMQSection   `mapstructure:"rabbitmq"`
+	Registry   RegistrySection   `mapstructure:"registry"`
 	Log        LogSection        `mapstructure:"log"`
 	Auth       AuthSection       `mapstructure:"auth"`
 	Otel       OtelSection       `mapstructure:"otel"`
 	TestImages TestImagesSection `mapstructure:"test_images"`
+	OrderMQ    OrderMQConfig     `mapstructure:"order_mq"`
 }
 
 type AppSection struct {
@@ -59,6 +62,17 @@ type RedisSection struct {
 	PoolSize int    `mapstructure:"pool_size"`
 }
 
+type RabbitMQSection struct {
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+}
+
+type RegistrySection struct {
+	Prefix string `mapstructure:"prefix"`
+}
+
 type LogSection struct {
 	ConsoleLevel string `mapstructure:"console_level"`
 	FileLevel    string `mapstructure:"file_level"`
@@ -86,6 +100,15 @@ type AuthSection struct {
 type TestImagesSection struct {
 	Postgres string `mapstructure:"postgres"`
 	Redis    string `mapstructure:"redis"`
+	RabbitMQ string `mapstructure:"rabbitmq"`
+}
+
+type OrderMQConfig struct {
+	Exchange      string `mapstructure:"exchange"`
+	ConsumerQueue string `mapstructure:"consumer_queue"`
+	DelayQueue    string `mapstructure:"delay_queue"`
+	RoutingKey    string `mapstructure:"routing_key"`
+	TTLMs         int    `mapstructure:"ttl_ms"`
 }
 
 func Init() (*AppConfig, error) {
@@ -99,6 +122,7 @@ func Init() (*AppConfig, error) {
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.BindEnv("registry.prefix", "IMAGE_REPOSITORY")
 	cfgPath := os.Getenv("CONFIG_PATH")
 	if cfgPath == "" {
 		cfgPath = "configs/config.yaml"
@@ -136,6 +160,15 @@ func (c *AppConfig) Validate() error {
 	if c.Database.User == "" {
 		return errors.New("database.user required")
 	}
+	if c.Database.Password == "" {
+		return errors.New("database.password required (ENV: APP_DATABASE_PASSWORD)")
+	}
+	if c.RabbitMQ.Password == "" {
+		return errors.New("rabbitmq.password required (ENV: APP_RABBITMQ_PASSWORD)")
+	}
+	if c.IsProd() && (c.Auth.TokenSecret == "" || c.Auth.TokenSecret == "12345678") {
+		return errors.New("auth.token_secret must be a strong, non-default value in production (ENV: APP_AUTH_TOKEN_SECRET)")
+	}
 	return nil
 }
 
@@ -144,3 +177,8 @@ func (c *AppConfig) Validate() error {
 func (c *AppConfig) IsDev() bool  { return strings.ToUpper(c.App.Env) == EnvDev }
 func (c *AppConfig) IsTest() bool { return strings.ToUpper(c.App.Env) == EnvTest }
 func (c *AppConfig) IsProd() bool { return strings.ToUpper(c.App.Env) == EnvProd }
+
+// ImageRef 拼接 registry 前缀与镜像名
+func (c *AppConfig) ImageRef(image string) string {
+	return c.Registry.Prefix + image
+}

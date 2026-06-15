@@ -6,7 +6,7 @@ data "external_schema" "gorm" {
     "-mod=mod",
     "ariga.io/atlas-provider-gorm",
     "load",
-    "--path", "../internal/user", # 替换为你存放实体类（Struct）的路径
+    "--path", "../internal/model",
     "--dialect", "postgres",      # 你使用的是 Postgres
   ]
 }

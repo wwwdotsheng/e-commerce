@@ -8,24 +8,26 @@ jobs:
       GOPROXY: https://goproxy.cn,direct
 
     steps:
-      - uses: http://env-1.local:31000/actions/checkout@v3
+      - uses: https://gitea.internal/actions/checkout@v3
 
       - name: Set up Go
-        uses: http://env-1.local:31000/actions/setup-go@v4
+        uses: https://gitea.internal/actions/setup-go@v4
         with:
-          go-version: '1.23'
+          go-version: '1.25.4'
 
       - name: Run Ginkgo Tests
+        env:
+          IMAGE_REPOSITORY: harbor.internal/dockerhub/
         run: |
           go mod download
           go install github.com/onsi/ginkgo/v2/ginkgo
-          APP_ENV=test APP_TEST_IMAGES_REDIS=harbor.local/dockerhub/redis:alpine3.22 APP_TEST_IMAGES_POSTGRES=harbor.local/dockerhub/postgres:15-alpine APP_OTEL_ENABLED=false CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
+          APP_ENV=test APP_REGISTRY_PREFIX="${IMAGE_REPOSITORY}" APP_OTEL_ENABLED=false APP_LOG_CONSOLE_LEVEL=error APP_DATABASE_LOG_LEVEL=error CONFIG_PATH=../configs/config.yaml $(go env GOPATH)/bin/ginkgo -r --race --randomize-all
 
       - name: Build and Push Docker Image
         run: |
-          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.local -u "${{ secrets.HARBOR_USER }}" --password-stdin
+          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login harbor.internal -u "${{ secrets.HARBOR_USER }}" --password-stdin
           SHORT_SHA=$(echo "${{ gitea.sha }}" | cut -c1-7)
-          IMAGE_TAG=harbor.local/my-project/e-commerce:$SHORT_SHA
+          IMAGE_TAG=harbor.internal/my-project/e-commerce:$SHORT_SHA
           
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG

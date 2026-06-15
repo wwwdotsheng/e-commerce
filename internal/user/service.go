@@ -3,6 +3,8 @@ package user
 import (
 	"context"
 	"e-commerce/internal/model"
+	"e-commerce/internal/pkg/database"
+	"e-commerce/internal/wallet"
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
@@ -18,12 +20,13 @@ type RegisterInput struct {
 }
 
 type Service struct {
-	repo    *Repository
-	metrics *Metrics
+	repo       *Repository
+	walletRepo *wallet.Repository
+	metrics    *Metrics
 }
 
-func NewService(repository *Repository, metrics *Metrics) *Service {
-	return &Service{repo: repository, metrics: metrics}
+func NewService(repository *Repository, walletRepo *wallet.Repository, metrics *Metrics) *Service {
+	return &Service{repo: repository, walletRepo: walletRepo, metrics: metrics}
 }
 
 func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err error) {
@@ -46,22 +49,28 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	}
 	span.End()
 
-	err = svc.repo.CreateUser(ctx, &model.User{
-		Email:    input.Email,
-		Password: string(bytes),
-		UserName: input.UserName,
-	})
-
-	if err != nil {
-		if errors.Is(err, repoErrUserNameAlreadyExists) {
-			errCode = MetErrCodeUserRegistered
-			return errno.ErrUserNameExisted
-		} else if errors.Is(err, repoErrEmailAlreadyExists) {
-			errCode = MetErrCodeEmailRegistered
-			return errno.ErrUserEmailExisted
+	if err := database.ExecuteTransaction(ctx, svc.repo.GetDB(ctx), func(txCtx context.Context) error {
+		user := &model.User{
+			UserName: input.UserName,
+			Email:    input.Email,
+			Password: string(bytes),
 		}
-		return errno.ErrInternalServer.WithRaw(err)
+		if err := svc.repo.CreateUser(txCtx, user); err != nil {
+			if errors.Is(err, repoErrUserNameAlreadyExists) {
+				errCode = MetErrCodeUserRegistered
+				return errno.ErrUserNameExisted
+			} else if errors.Is(err, repoErrEmailAlreadyExists) {
+				errCode = MetErrCodeEmailRegistered
+				return errno.ErrUserEmailExisted
+			}
+			return errno.ErrInternalServer.WithRaw(err)
+		}
+		if err := svc.walletRepo.CreateDefaultAccount(txCtx, user.ID); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("transaction failed: %w", err)
 	}
-
 	return nil
 }

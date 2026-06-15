@@ -2,7 +2,6 @@ package clog
 
 import (
 	"context"
-	"e-commerce/internal/config"
 	"os"
 
 	"go.opentelemetry.io/otel/trace" // 引入 trace 包
@@ -23,7 +22,16 @@ func parseLevel(l string) zapcore.Level {
 	return level
 }
 
-func Init(config config.LogSection) *zap.Logger {
+type Config struct {
+	ConsoleLevel string
+	FileLevel    string
+	Filename     string
+	MaxSize      int
+	MaxBackups   int
+	MaxAge       int
+}
+
+func Init(config Config) *zap.Logger {
 	encoderConfig := zap.NewProductionEncoderConfig()
 	// 关键修改：将时间格式化为 ISO8601，方便 Loki 解析
 	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
