@@ -2,7 +2,7 @@ openapi: "3.1.0"
 info:
   title: E-Commerce API
   description: |
-    电商后端 API，支持用户认证、商品管理、钱包充值、订单管理。
+    电商后端 API，支持用户认证、商品管理、钱包充值、订单管理、优惠券。
 
     ## 通用错误码
 
@@ -346,6 +346,81 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderListResponse'
 
+  /coupon/template:
+    post:
+      tags: [优惠券]
+      summary: 创建优惠券模板
+      operationId: CreateCouponTemplate
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '200':
+          description: |
+            00000 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateResponse'
+
+  /coupon/grant:
+    post:
+      tags: [优惠券]
+      summary: 给用户发券
+      operationId: GrantCoupon
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantCouponRequest'
+      responses:
+        '200':
+          description: |
+            00000 发券成功
+            特有错误：券模板不存在、已过期、库存不足、超过每人限领数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCouponResponse'
+
+  /coupon/list:
+    get:
+      tags: [优惠券]
+      summary: 查看我的优惠券
+      operationId: ListUserCoupons
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserCouponListResponse'
+
 components:
   securitySchemes:
     AccessTokenAuth:
@@ -554,6 +629,10 @@ components:
         quantity:
           type: integer
           minimum: 1
+        coupon_id:
+          type: string
+          format: uuid
+          description: 可选，要使用的用户优惠券 ID
         idempotency_key:
           type: string
 
@@ -566,15 +645,24 @@ components:
         product_id:
           type: string
           format: uuid
-        product_name:
+        snapshot_title:
           type: string
         quantity:
           type: integer
-        total_price:
+        snapshot_price:
           type: number
           format: float
+        discount_amount:
+          type: number
+          format: float
+          description: 优惠券抵扣金额
+        total_amount:
+          type: number
+          format: float
+          description: 实付金额（snapshot_price * quantity - discount_amount）
         status:
-          type: string
+          type: integer
+          description: "0=处理中 1=已完成 2=已取消 3=超时"
         created_at:
           type: string
           format: date-time
@@ -591,5 +679,159 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/OrderItem'
+                total:
+                  type: integer
+
+    # === 优惠券 ===
+
+    CreateTemplateRequest:
+      type: object
+      required: [name, type, total_qty, start_time, end_time]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          enum: [fixed_amount, percentage]
+        discount_value:
+          type: number
+          format: float
+          minimum: 0
+          description: 满减金额（type=fixed_amount 时填写）
+        discount_rate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: 折扣率（type=percentage 时填写，如 0.8 表示八折）
+        max_deduction:
+          type: number
+          format: float
+          minimum: 0
+          description: 折扣封顶金额（type=percentage 时可用）
+        min_amount:
+          type: number
+          format: float
+          minimum: 0
+          description: 最低消费金额
+        total_qty:
+          type: integer
+          minimum: 1
+        per_user_limit:
+          type: integer
+          minimum: 1
+          default: 1
+        start_time:
+          type: string
+          format: date-time
+          example: "2026-06-01 00:00:00"
+        end_time:
+          type: string
+          format: date-time
+          example: "2026-06-30 23:59:59"
+
+    TemplateItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        discount_value:
+          type: number
+        discount_rate:
+          type: number
+        max_deduction:
+          type: number
+        min_amount:
+          type: number
+        total_qty:
+          type: integer
+        remaining_qty:
+          type: integer
+        per_user_limit:
+          type: integer
+        start_time:
+          type: string
+        end_time:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+
+    TemplateResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TemplateItem'
+
+    GrantCouponRequest:
+      type: object
+      required: [template_id, user_id]
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+
+    UserCouponItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        type:
+          type: string
+        discount_value:
+          type: number
+        discount_rate:
+          type: number
+        max_deduction:
+          type: number
+        min_amount:
+          type: number
+        status:
+          type: string
+          enum: [unused, used, expired]
+        expire_time:
+          type: string
+        created_at:
+          type: string
+
+    UserCouponResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/UserCouponItem'
+
+    UserCouponListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                coupons:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UserCouponItem'
                 total:
                   type: integer
