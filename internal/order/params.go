@@ -7,6 +7,7 @@ import (
 type CreateOrderParam struct {
 	ProductID      uuid.UUID
 	Quantity       int
+	UserCouponID   uuid.UUID
 	IdempotencyKey string
 }
 

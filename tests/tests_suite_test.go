@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/app"
 	"e-commerce/internal/auth"
+	"e-commerce/internal/coupon"
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
@@ -215,9 +216,11 @@ var _ = BeforeSuite(func() {
 	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
 		logger.Fatal("初始化order mq失败", zap.Error(err))
 	}
-	orderSvc := order.NewService(testDB, orderRepo, productRepo)
+	couponRepo := coupon.NewRepository(testDB)
+	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo))
+	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo)
 
-	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, logger, &mp)
+	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}

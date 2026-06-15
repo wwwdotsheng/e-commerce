@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/auth"
 	"e-commerce/internal/config"
+	"e-commerce/internal/coupon"
 	"e-commerce/internal/middleware"
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
@@ -76,6 +77,7 @@ func SetupRouter(
 	walletSvc *wallet.Service,
 	productSvc *product.Service,
 	orderSvc *order.Service,
+	couponH *coupon.Handler,
 	logger *zap.Logger,
 	mp *metric.MeterProvider,
 ) (*gin.Engine, error) {
@@ -142,6 +144,11 @@ func SetupRouter(
 		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
 		orderGroup.POST("/create", orderH.CreateOrder)
 		orderGroup.GET("/list", orderH.ListOrders)
+
+		couponGroup := v1.Group("/coupon").Use(accessTokenAuthMiddleware)
+		couponGroup.POST("/template", couponH.CreateTemplate)
+		couponGroup.POST("/grant", couponH.GrantCoupon)
+		couponGroup.GET("/list", couponH.ListUserCoupons)
 	}
 	return r, nil
 }
@@ -175,6 +182,8 @@ func Run(ctx context.Context, config config.AppConfig) error {
 			&model.Product{},
 			&model.Order{},
 			&model.StockChangeLog{},
+			&model.CouponTemplate{},
+			&model.UserCoupon{},
 		); err != nil {
 			return fmt.Errorf("数据库 AutoMigrate 失败: %w", err)
 		}
@@ -223,14 +232,18 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
 		return fmt.Errorf("初始化 order MQ 失败: %w", err)
 	}
-	orderSvc := order.NewService(db, orderRepo, productRepo)
+	couponRepo := coupon.NewRepository(db)
+	couponSvc := coupon.NewService(db, couponRepo)
+	couponH := coupon.NewHandler(couponSvc)
+
+	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {
 		return fmt.Errorf("启动订单消费者失败: %w", err)
 	}
 
-	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
 	if err != nil {
 		return fmt.Errorf("初始化路由失败: %w", err)
 	}

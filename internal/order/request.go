@@ -3,6 +3,7 @@ package order
 type CreateOrderBody struct {
 	ProductID      string `json:"product_id" binding:"required"`
 	Quantity       int    `json:"quantity" binding:"required,min=1"`
+	CouponID       string `json:"coupon_id" binding:"omitempty"`
 	IdempotencyKey string `json:"idempotency_key" binding:"required"`
 }
 

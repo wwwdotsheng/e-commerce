@@ -99,16 +99,26 @@ func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.
 	)
 }
 
-func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) error {
-	err := repo.GetDB(ctx).
-		Model(&model.Order{}).
-		Where("id = ? and status = ?", orderID.String(), model.OrderStatusProcessing).
-		Update("status", model.OrderStatusTimeout).Error
+func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (*model.Order, error) {
+	var order model.Order
+	err := repo.GetDB(ctx).Where("id = ?", orderID).First(&order).Error
 	if err != nil {
-		return fmt.Errorf("failed to update order status timeout %s: %w", orderID, err)
+		return nil, fmt.Errorf("查询订单失败 %s: %w", orderID, err)
 	}
 
-	return nil
+	if order.Status != model.OrderStatusProcessing {
+		return &order, nil // 已处理过
+	}
+
+	result := repo.GetDB(ctx).
+		Model(&model.Order{}).
+		Where("id = ? AND status = ?", orderID, model.OrderStatusProcessing).
+		Update("status", model.OrderStatusTimeout)
+	if result.Error != nil {
+		return nil, fmt.Errorf("更新订单超时状态失败 %s: %w", orderID, result.Error)
+	}
+
+	return &order, nil
 }
 
 func (repo *Repository) ListOrdersByUserID(ctx context.Context, userID uuid.UUID, pageNum, pageSize int) ([]*model.Order, int64, error) {

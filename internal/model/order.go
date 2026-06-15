@@ -30,9 +30,11 @@ type Order struct {
 	SnapshotTitle  string      `gorm:"column:snapshot_title;varchar(255);not null"`
 	SnapshotPrice  float64     `gorm:"column:snapshot_price;decimal(16,2);not null"`
 	Status         OrderStatus `gorm:"column:status;type:smallint;not null"`
+	UserCouponID   *uuid.UUID  `gorm:"column:user_coupon_id;type:uuid"`
+	DiscountAmount float64     `gorm:"column:discount_amount;decimal(16,2);not null;default:0"`
 	IdempotencyKey string      `gorm:"column:idempotency_key;uniqueIndex:uni_order_idempotency_key;type:varchar(64);not null;"`
-	CreatedAt     time.Time    `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt     time.Time    `gorm:"column:updated_at;autoUpdateTime"`
+	CreatedAt      time.Time   `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt      time.Time   `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (o *Order) BeforeCreate(tx *gorm.DB) (err error) {

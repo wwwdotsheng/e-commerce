@@ -39,9 +39,19 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	var couponID uuid.UUID
+	if body.CouponID != "" {
+		couponID, err = uuid.Parse(body.CouponID)
+		if err != nil {
+			response.WriteInvalidParam(c, err)
+			return
+		}
+	}
+
 	if err := h.svc.CreateOrder(ctx, accountInfo.AccountId, CreateOrderParam{
 		ProductID:      productID,
 		Quantity:       body.Quantity,
+		UserCouponID:   couponID,
 		IdempotencyKey: body.IdempotencyKey,
 	}); err != nil {
 		response.Write(c, err, nil)
