@@ -199,7 +199,6 @@ var _ = BeforeSuite(func() {
 	authSvc := auth.NewService(authRepo, &config.Auth)
 
 	walletRepo := wallet.NewRepository(testDB, testRedis)
-	walletSvc := wallet.NewService(walletRepo)
 
 	userMeter := mp.Meter("user_api")
 	userMetrics, err := user.NewMetrics(userMeter)
@@ -209,6 +208,22 @@ var _ = BeforeSuite(func() {
 	userRepo := user.NewRepository(testDB)
 	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
+	bizMeter := mp.Meter("business_api")
+	walletMetrics, err := wallet.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Fatal("wallet metrics初始化失败", zap.Error(err))
+	}
+	orderMetrics, err := order.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Fatal("order metrics初始化失败", zap.Error(err))
+	}
+	couponMetrics, err := coupon.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Fatal("coupon metrics初始化失败", zap.Error(err))
+	}
+
+	walletSvc := wallet.NewService(walletRepo, walletMetrics)
+
 	productRepo := product.NewRepository(testDB)
 	productSvc := product.NewService(testDB, productRepo)
 
@@ -217,8 +232,8 @@ var _ = BeforeSuite(func() {
 		logger.Fatal("初始化order mq失败", zap.Error(err))
 	}
 	couponRepo := coupon.NewRepository(testDB)
-	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo))
-	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo)
+	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics))
+	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
 
 	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
 	if err != nil {

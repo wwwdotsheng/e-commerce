@@ -212,7 +212,6 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	defer mqCleanup()
 
 	walletRepo := wallet.NewRepository(db, rdb)
-	walletSvc := wallet.NewService(walletRepo)
 
 	authRepo := auth.NewRepository(db, rdb, &config.Auth)
 	authSvc := auth.NewService(authRepo, &config.Auth)
@@ -223,6 +222,22 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		logger.Error("metrics初始化失败", zap.Error(err))
 	}
 	userRepo := user.NewRepository(db)
+
+	bizMeter := mp.Meter("business_api")
+	walletMetrics, err := wallet.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Error("wallet metrics初始化失败", zap.Error(err))
+	}
+	orderMetrics, err := order.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Error("order metrics初始化失败", zap.Error(err))
+	}
+	couponMetrics, err := coupon.NewMetrics(bizMeter)
+	if err != nil {
+		logger.Error("coupon metrics初始化失败", zap.Error(err))
+	}
+
+	walletSvc := wallet.NewService(walletRepo, walletMetrics)
 	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
 	productRepo := product.NewRepository(db)
@@ -233,10 +248,10 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("初始化 order MQ 失败: %w", err)
 	}
 	couponRepo := coupon.NewRepository(db)
-	couponSvc := coupon.NewService(db, couponRepo)
+	couponSvc := coupon.NewService(db, couponRepo, couponMetrics)
 	couponH := coupon.NewHandler(couponSvc)
 
-	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo)
+	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, orderMetrics)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {

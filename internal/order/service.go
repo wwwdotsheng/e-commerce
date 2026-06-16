@@ -22,17 +22,27 @@ type Service struct {
 	repo        *Repository
 	productRepo *product.Repository
 	couponRepo  *coupon.Repository
+	metrics     *Metrics
 }
 
-func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository, couponRepo *coupon.Repository) *Service {
-	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo}
+func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository, couponRepo *coupon.Repository, metrics *Metrics) *Service {
+	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo, metrics: metrics}
 }
 
 // CreateOrder 创建订单（支持可选优惠券）
-func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param CreateOrderParam) error {
+func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param CreateOrderParam) (err error) {
+	var errCode = orderCreateErrInternal
+	defer func() {
+		if err != nil {
+			svc.metrics.AddOrderCreateTotal(ctx, orderCreateStatusFail, errCode)
+		} else {
+			svc.metrics.AddOrderCreateTotal(ctx, orderCreateStatusSuccess, orderCreateErrNone)
+		}
+	}()
+
 	var order *model.Order
 
-	err := database.ExecuteTransaction(ctx, svc.db, func(ctx context.Context) error {
+	err = database.ExecuteTransaction(ctx, svc.db, func(ctx context.Context) error {
 		p, err := svc.productRepo.GetProductByID(ctx, param.ProductID, database.LockUpdate)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -100,6 +110,17 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 		if errors.Is(err, repoErrOrderIdempotencyConflict) {
 			return nil
 		}
+		switch {
+		case errors.Is(err, errno.ErrOrderProductIdNotFound):
+			errCode = orderCreateErrProductNotFound
+		case errors.Is(err, errno.ErrProductStockInsufficient):
+			errCode = orderCreateErrStockInsufficient
+		case errors.Is(err, coupon.ErrCouponAlreadyUsed) ||
+			errors.Is(err, coupon.ErrTemplateNotFound) ||
+			errors.Is(err, coupon.ErrCouponMinAmountNotMet) ||
+			errors.Is(err, coupon.ErrCouponNotOwned):
+			errCode = orderCreateErrCoupon
+		}
 		return err
 	}
 
@@ -108,6 +129,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			zap.String("order_id", order.ID.String()),
 			zap.Error(err),
 		)
+		errCode = orderCreateErrTimeoutSchedule
 		return fmt.Errorf("订单已创建但超时调度失败: %w", err)
 	}
 	return nil
@@ -129,7 +151,15 @@ func calcCouponDeduction(t *model.CouponTemplate, orderAmount float64) float64 {
 	}
 }
 
-func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) error {
+func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (err error) {
+	defer func() {
+		if err != nil {
+			svc.metrics.AddOrderTimeoutTotal(ctx, orderTimeoutStatusFail)
+		} else {
+			svc.metrics.AddOrderTimeoutTotal(ctx, orderTimeoutStatusClosed)
+		}
+	}()
+
 	order, err := svc.repo.HandleOrderTimeout(ctx, orderID)
 	if err != nil {
 		return err
