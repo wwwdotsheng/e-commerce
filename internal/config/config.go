@@ -28,7 +28,8 @@ type AppConfig struct {
 	Auth       AuthSection       `mapstructure:"auth"`
 	Otel       OtelSection       `mapstructure:"otel"`
 	TestImages TestImagesSection `mapstructure:"test_images"`
-	OrderMQ    OrderMQConfig     `mapstructure:"order_mq"`
+	Elasticsearch ElasticsearchSection `mapstructure:"elasticsearch"`
+	OrderMQ       OrderMQConfig        `mapstructure:"order_mq"`
 }
 
 type AppSection struct {
@@ -101,6 +102,11 @@ type TestImagesSection struct {
 	Postgres string `mapstructure:"postgres"`
 	Redis    string `mapstructure:"redis"`
 	RabbitMQ string `mapstructure:"rabbitmq"`
+}
+
+type ElasticsearchSection struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
 }
 
 type OrderMQConfig struct {

@@ -61,6 +61,10 @@ test_images:
   rabbitmq: "rabbitmq:3-alpine"
 
 
+elasticsearch:
+  host: "elasticsearch"
+  port: 9200
+
 order_mq:
   exchange: "dlx_exchange"
   consumer_queue: "order_timeout_queue"

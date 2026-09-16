@@ -8,6 +8,7 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
+	"e-commerce/internal/shop"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
@@ -225,7 +226,7 @@ var _ = BeforeSuite(func() {
 	walletSvc := wallet.NewService(walletRepo, walletMetrics)
 
 	productRepo := product.NewRepository(testDB)
-	productSvc := product.NewService(testDB, productRepo)
+	productSvc := product.NewService(testDB, productRepo, nil, logger)
 
 	orderRepo := order.NewRepository(testDB, mqCh, &config.OrderMQ)
 	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
@@ -233,9 +234,11 @@ var _ = BeforeSuite(func() {
 	}
 	couponRepo := coupon.NewRepository(testDB)
 	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics))
+	shopRepo := shop.NewRepository(testDB)
+	shopH := shop.NewHandler(shop.NewService(shopRepo))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
 
-	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
+	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}

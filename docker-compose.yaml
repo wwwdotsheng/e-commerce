@@ -57,6 +57,25 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+  elasticsearch:
+    image: ${IMAGE_REPOSITORY:-harbor.local/dockerhub/}elasticsearch:8.17.3
+    container_name: es-dev
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - monitor_net
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
   rabbitmq:
     image: ${IMAGE_REPOSITORY:-harbor.local/dockerhub/}rabbitmq:3.12-management
     container_name: ecommerce-mq
@@ -142,3 +161,5 @@ services:
 networks:
   monitor_net:
     driver: bridge
+volumes:
+  es_data:

@@ -9,10 +9,12 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
+	"e-commerce/internal/shop"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/dbconn"
+	"e-commerce/pkg/esconn"
 	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
@@ -78,6 +80,7 @@ func SetupRouter(
 	productSvc *product.Service,
 	orderSvc *order.Service,
 	couponH *coupon.Handler,
+	shopH *shop.Handler,
 	logger *zap.Logger,
 	mp *metric.MeterProvider,
 ) (*gin.Engine, error) {
@@ -140,6 +143,8 @@ func SetupRouter(
 		productGroup.POST("/:id/status", productH.UpdateProductStatus)
 		productGroup.DELETE("/:id", productH.DeleteProduct)
 
+		v1.GET("/product/search", productH.SearchProducts)
+
 		orderH := order.NewHandler(orderSvc)
 		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
 		orderGroup.POST("/create", orderH.CreateOrder)
@@ -149,6 +154,11 @@ func SetupRouter(
 		couponGroup.POST("/template", couponH.CreateTemplate)
 		couponGroup.POST("/grant", couponH.GrantCoupon)
 		couponGroup.GET("/list", couponH.ListUserCoupons)
+
+		shopGroup := v1.Group("/shop").Use(accessTokenAuthMiddleware)
+		shopGroup.POST("/create", shopH.CreateShop)
+		shopGroup.GET("/list", shopH.ListShops)
+		shopGroup.GET("/:id", shopH.GetShop)
 	}
 	return r, nil
 }
@@ -184,6 +194,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 			&model.StockChangeLog{},
 			&model.CouponTemplate{},
 			&model.UserCoupon{},
+			&model.Shop{},
 		); err != nil {
 			return fmt.Errorf("数据库 AutoMigrate 失败: %w", err)
 		}
@@ -241,7 +252,29 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	userSvc := user.NewService(userRepo, walletRepo, userMetrics)
 
 	productRepo := product.NewRepository(db)
-	productSvc := product.NewService(db, productRepo)
+
+	esClient, err := esconn.Init(ctx, esconn.Config{
+		Host: config.Elasticsearch.Host,
+		Port: config.Elasticsearch.Port,
+	})
+	if err != nil {
+		logger.Warn("ES 初始化失败，搜索功能不可用", zap.Error(err))
+	}
+
+	var productSvc *product.Service
+	if esClient != nil {
+		productSvc = product.NewService(db, productRepo, esClient, logger)
+		go func() {
+			products, err := productRepo.FindAll(context.Background())
+			if err != nil {
+				logger.Warn("ES 全量重建失败：查询产品列表失败", zap.Error(err))
+				return
+			}
+			productSvc.RebuildIndex(context.Background(), products)
+		}()
+	} else {
+		productSvc = product.NewService(db, productRepo, nil, logger)
+	}
 
 	orderRepo := order.NewRepository(db, mqCh, &config.OrderMQ)
 	if err := orderRepo.SetupMQ(&config.OrderMQ); err != nil {
@@ -251,6 +284,10 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	couponSvc := coupon.NewService(db, couponRepo, couponMetrics)
 	couponH := coupon.NewHandler(couponSvc)
 
+	shopRepo := shop.NewRepository(db)
+	shopSvc := shop.NewService(shopRepo)
+	shopH := shop.NewHandler(shopSvc)
+
 	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, orderMetrics)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
@@ -258,7 +295,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("启动订单消费者失败: %w", err)
 	}
 
-	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
 	if err != nil {
 		return fmt.Errorf("初始化路由失败: %w", err)
 	}

@@ -25,6 +25,7 @@ func (s ProductStatus) IsValid() bool {
 type Product struct {
 	ID          uuid.UUID     `gorm:"column:id;type:uuid;primaryKey"`
 	Publisher   uuid.UUID     `gorm:"column:publisher;type:uuid;not null"`
+	ShopID      *uuid.UUID    `gorm:"column:shop_id;type:uuid;index"`
 	Name        string        `gorm:"column:name;type:varchar(255);not null"`
 	Description string        `gorm:"column:description;type:text;not null"`
 	Price       float64       `gorm:"column:price;type:decimal(16,2);not null"`
