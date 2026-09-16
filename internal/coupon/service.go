@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/model"
 	"e-commerce/pkg/clog"
+	"errors"
 	"fmt"
 	"time"
 
@@ -13,12 +14,13 @@ import (
 )
 
 type Service struct {
-	db   *gorm.DB
-	repo *Repository
+	db      *gorm.DB
+	repo    *Repository
+	metrics *Metrics
 }
 
-func NewService(db *gorm.DB, repo *Repository) *Service {
-	return &Service{db: db, repo: repo}
+func NewService(db *gorm.DB, repo *Repository, metrics *Metrics) *Service {
+	return &Service{db: db, repo: repo, metrics: metrics}
 }
 
 // CreateTemplate 运营创建优惠券模板
@@ -61,7 +63,16 @@ func (s *Service) CreateTemplate(ctx context.Context, param CreateTemplateParam)
 }
 
 // GrantCoupon 给用户发券（乐观锁扣减模板库存）
-func (s *Service) GrantCoupon(ctx context.Context, param GrantCouponParam) (*model.UserCoupon, error) {
+func (s *Service) GrantCoupon(ctx context.Context, param GrantCouponParam) (uc *model.UserCoupon, err error) {
+	var errCode = couponOpErrInternal
+	defer func() {
+		if err != nil {
+			s.metrics.AddCouponGrantTotal(ctx, couponOpStatusFail, errCode)
+		} else {
+			s.metrics.AddCouponGrantTotal(ctx, couponOpStatusSuccess, couponOpErrNone)
+		}
+	}()
+
 	template, err := s.repo.GetTemplate(ctx, param.TemplateID)
 	if err != nil {
 		return nil, err
@@ -69,9 +80,11 @@ func (s *Service) GrantCoupon(ctx context.Context, param GrantCouponParam) (*mod
 
 	now := time.Now()
 	if template.Status != model.CouponStatusActive {
+		errCode = couponOpErrNotActive
 		return nil, ErrTemplateNotActive
 	}
 	if now.Before(template.StartTime) || now.After(template.EndTime) {
+		errCode = couponOpErrExpired
 		return nil, ErrTemplateExpired
 	}
 
@@ -80,20 +93,24 @@ func (s *Service) GrantCoupon(ctx context.Context, param GrantCouponParam) (*mod
 		return nil, fmt.Errorf("统计用户券数量失败: %w", err)
 	}
 	if count >= int64(template.PerUserLimit) {
+		errCode = couponOpErrPerUserLimit
 		return nil, fmt.Errorf("该优惠券每人限领 %d 张", template.PerUserLimit)
 	}
 
 	if err := s.repo.DeductRemainingQty(ctx, param.TemplateID); err != nil {
+		if errors.Is(err, ErrCouponOutOfStock) {
+			errCode = couponOpErrStockEmpty
+		}
 		return nil, err
 	}
 
-	uc := &model.UserCoupon{
+	uc = &model.UserCoupon{
 		UserID:     param.UserID,
 		TemplateID: param.TemplateID,
 		Status:     model.UserCouponStatusUnused,
 		ExpireTime: template.EndTime,
 	}
-	if err := s.repo.CreateUserCoupon(ctx, uc); err != nil {
+	if err = s.repo.CreateUserCoupon(ctx, uc); err != nil {
 		return nil, fmt.Errorf("创建用户券失败: %w", err)
 	}
 

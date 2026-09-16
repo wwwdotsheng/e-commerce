@@ -13,6 +13,7 @@ import (
 
 type Service struct {
 	walletRepo *Repository
+	metrics    *Metrics
 }
 
 type DepositInput struct {
@@ -20,21 +21,31 @@ type DepositInput struct {
 	IdempotencyKey string
 }
 
-func NewService(walletRepo *Repository) *Service {
-	return &Service{walletRepo: walletRepo}
+func NewService(walletRepo *Repository, metrics *Metrics) *Service {
+	return &Service{walletRepo: walletRepo, metrics: metrics}
 }
 
-func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID string, input *DepositInput) error {
+func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID string, input *DepositInput) (err error) {
+	var errCode = depositErrInternal
+	defer func() {
+		if err != nil {
+			svc.metrics.AddDepositTotal(ctx, depositStatusFail, errCode)
+		} else {
+			svc.metrics.AddDepositTotal(ctx, depositStatusSuccess, depositErrNone)
+		}
+	}()
+
 	logger := clog.L(ctx)
 	if input.Amount <= 0 {
 		logger.Warn(errno.ErrWalletInvalidDepositAmount.Message,
 			zap.String("user_id", UserID.String()),
 			zap.String("session_id", SessionID),
 		)
+		errCode = depositErrInvalid
 		return errno.ErrWalletInvalidDepositAmount
 	}
 
-	err := database.ExecuteTransaction(ctx, svc.walletRepo.GetDB(ctx), func(txCtx context.Context) error {
+	err = database.ExecuteTransaction(ctx, svc.walletRepo.GetDB(ctx), func(txCtx context.Context) error {
 		return svc.walletRepo.Deposit(txCtx, UserID, SessionID, input)
 	})
 	if errors.Is(err, repoErrDepositRecordAlreadyExists) {
