@@ -38,7 +38,8 @@ data:
       port: 5672
 
     registry:
-      prefix: "harbor.internal/dockerhub/"
+      # 留空 = Docker Hub
+      prefix: ""
 
     log:
       console_level: "info"
