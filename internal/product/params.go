@@ -13,6 +13,7 @@ type CreateProductParam struct {
 	Status      *model.ProductStatus
 	Stock       int
 	Publisher   uuid.UUID
+	ShopID      *uuid.UUID
 }
 type UpdateProductStatusParam struct {
 	ProductID uuid.UUID
@@ -43,4 +44,18 @@ type UpdateProductStockParam struct {
 	Publisher uuid.UUID
 	Quantity  int
 	Reason    model.StockChangeReason
+}
+
+type SearchProductsParam struct {
+	Query    string
+	MinPrice *float64
+	MaxPrice *float64
+	PageNum  int
+	PageSize int
+	ShopID   *uuid.UUID
+}
+
+type SearchProductsResult struct {
+	Products []Item
+	Total    int64
 }

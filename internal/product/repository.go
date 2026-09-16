@@ -28,9 +28,10 @@ type CreateProductData struct {
 	Status      *model.ProductStatus
 	Stock       int
 	Publisher   uuid.UUID
+	ShopID      *uuid.UUID
 }
 
-func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductData) error {
+func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductData) (*model.Product, error) {
 	pStatus := model.ProductStatusInactive
 	if data.Status != nil && data.Status.IsValid() {
 		pStatus = *data.Status
@@ -38,6 +39,7 @@ func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductDat
 
 	p := &model.Product{
 		Publisher:   data.Publisher,
+		ShopID:      data.ShopID,
 		Name:        data.Name,
 		Description: data.Description,
 		Price:       data.Price,
@@ -45,7 +47,10 @@ func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductDat
 		Status:      pStatus,
 		Version:     1,
 	}
-	return repo.GetDB(ctx).Create(p).Error
+	if err := repo.GetDB(ctx).Create(p).Error; err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (repo *Repository) GetProductByID(ctx context.Context, id uuid.UUID, lockType database.LockType) (*model.Product, error) {
@@ -172,7 +177,7 @@ func (repo *Repository) ListProducts(ctx context.Context, data ListProductsData)
 
 	err := baseQuery.
 		Session(&gorm.Session{}).
-		Select([]string{"id", "publisher", "name", "price", "status", "created_at"}).
+		Select([]string{"id", "publisher", "shop_id", "name", "price", "status", "created_at"}).
 		Offset((data.PageNum - 1) * data.PageSize).
 		Limit(data.PageSize).
 		Order("created_at DESC").
@@ -185,6 +190,21 @@ type UpdateProductPropertyData struct {
 	ProductID uuid.UUID
 	Publisher uuid.UUID
 	Data      map[string]interface{}
+}
+
+func (repo *Repository) FindByIDs(ctx context.Context, ids []string) ([]*model.Product, error) {
+	var products []*model.Product
+	err := repo.GetDB(ctx).
+		Where("id IN ?", ids).
+		Find(&products).Error
+	return products, err
+}
+
+func (repo *Repository) FindAll(ctx context.Context) ([]*model.Product, error) {
+	var products []*model.Product
+	err := repo.GetDB(ctx).
+		Find(&products).Error
+	return products, err
 }
 
 func (repo *Repository) Update(ctx context.Context, data UpdateProductPropertyData) error {

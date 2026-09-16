@@ -33,7 +33,8 @@ rabbitmq:
   port: 5672
 
 registry:
-  prefix: "harbor.internal/dockerhub/"
+  # 镜像仓库前缀，留空 = Docker Hub。CI 里用 APP_REGISTRY_PREFIX 覆盖
+  prefix: ""
 
 log:
   console_level: "debug"
@@ -60,6 +61,10 @@ test_images:
   redis: "redis:7-alpine"
   rabbitmq: "rabbitmq:3-alpine"
 
+
+elasticsearch:
+  host: "elasticsearch"
+  port: 9200
 
 order_mq:
   exchange: "dlx_exchange"

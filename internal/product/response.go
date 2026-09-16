@@ -7,6 +7,8 @@ import (
 type Item struct {
 	ID        string  `json:"id"`
 	Publisher string  `json:"publisher"`
+	ShopID    string  `json:"shop_id"`
+	ShopName  string  `json:"shop_name"`
 	Name      string  `json:"name"`
 	Price     float64 `json:"price"`
 	Status    string  `json:"status"`
@@ -23,10 +25,16 @@ type ListProductsResponse struct {
 	Total    int64  `json:"total"`
 }
 
-func FormatItem(p *model.Product) *Item {
+func FormatItem(p *model.Product, shopName string) *Item {
+	shopID := ""
+	if p.ShopID != nil {
+		shopID = p.ShopID.String()
+	}
 	return &Item{
 		ID:        p.ID.String(),
 		Publisher: p.Publisher.String(),
+		ShopID:    shopID,
+		ShopName:  shopName,
 		Name:      p.Name,
 		Price:     p.Price,
 		Status:    string(p.Status),
@@ -34,11 +42,17 @@ func FormatItem(p *model.Product) *Item {
 	}
 }
 
-func FormatDetail(p *model.Product) *Detail {
+func FormatDetail(p *model.Product, shopName string) *Detail {
+	shopID := ""
+	if p.ShopID != nil {
+		shopID = p.ShopID.String()
+	}
 	return &Detail{
 		Item: Item{
 			ID:        p.ID.String(),
 			Publisher: p.Publisher.String(),
+			ShopID:    shopID,
+			ShopName:  shopName,
 			Name:      p.Name,
 			Price:     p.Price,
 			Status:    string(p.Status),
