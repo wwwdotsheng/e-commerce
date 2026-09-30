@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: web-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: web.rules
+      rules:
+        - alert: WebPodNotRunning
+          expr: kube_pod_status_phase{namespace="default", pod=~"web-.*", phase="Running"} == 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "web Pod 不是 Running"
+            description: "Pod {{ $labels.pod }} 当前不是 Running 状态，请检查。"
