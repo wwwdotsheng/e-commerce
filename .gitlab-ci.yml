@@ -11,7 +11,7 @@
 #   HARBOR_USER           镜像仓库账号
 #   HARBOR_PASSWORD       镜像仓库密码（masked）
 #   IMAGE_REPO            业务镜像完整路径
-#   TEST_REGISTRY_PREFIX  testcontainers 拉基础镜像的前缀
+#   REGISTRY_PREFIX       基础镜像前缀（testcontainers 与 Dockerfile 共用）
 #   GOLANG_IMAGE          测试阶段用的 golang 镜像
 #   BUILDKIT_IMAGE        构建阶段用的 buildkit 镜像
 #   BUILDKIT_HOST         BuildKit socket 地址（runner 挂进来的）
@@ -42,7 +42,7 @@ test:
     #   app.env        → APP_APP_ENV（不是 APP_ENV）
     #   registry.prefix→ IMAGE_REPOSITORY（代码里显式 BindEnv）
     - APP_APP_ENV=test
-      IMAGE_REPOSITORY="${TEST_REGISTRY_PREFIX}"
+      IMAGE_REPOSITORY="${REGISTRY_PREFIX}"
       APP_OTEL_ENABLED=false
       APP_LOG_CONSOLE_LEVEL=error
       APP_DATABASE_LOG_LEVEL=error
@@ -75,5 +75,6 @@ build-image:
         --frontend dockerfile.v0 \
         --local context=. \
         --local dockerfile=. \
+        --opt build-arg:REGISTRY_PREFIX="$REGISTRY_PREFIX" \
         --output type=image,name="$IMAGE_REPO:$CI_COMMIT_SHORT_SHA",push=true
     - echo "✅ 已推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA"
