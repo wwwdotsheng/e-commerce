@@ -13,7 +13,7 @@
 | 检索 | Elasticsearch |
 | 可观测性 | OpenTelemetry · Tempo · Prometheus · Loki · Grafana |
 | 测试 | Ginkgo · Testcontainers |
-| 交付 | Docker Compose · Gitea Actions |
+| 交付 | Docker Compose · Kubernetes · GitLab CI |
 
 ## 快速开始
 
@@ -121,7 +121,7 @@ go test ./tests/... -v
 
 集成测试基于 Ginkgo 与 Testcontainers，运行前自动创建 PostgreSQL、Redis、RabbitMQ 容器，运行后销毁，不依赖本地环境。
 
-CI 在 Gitea Actions 上执行，开启 `--race` 竞态检测与 `--randomize-all` 用例乱序执行。
+CI 在 GitLab CI 上执行（`test` → `build` 推镜像），开启 `--race` 竞态检测与 `--randomize-all` 用例乱序执行。
 
 ## 可观测性
 
