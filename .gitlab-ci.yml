@@ -1,0 +1,79 @@
+# ═══════════════════════════════════════════════════════════════
+# e-commerce 的 GitLab CI
+#
+#   test         go vet + ginkgo -race（testcontainers 依赖 docker.sock）
+#   build-image  rootless BuildKit 构建并推送镜像
+#
+# 仓库里不写任何内网地址，下面这些值全部放在
+# Settings → CI/CD → Variables 里（本文件只引用变量名）：
+#
+#   HARBOR_HOST           镜像仓库域名
+#   HARBOR_USER           镜像仓库账号
+#   HARBOR_PASSWORD       镜像仓库密码（masked）
+#   IMAGE_REPO            业务镜像完整路径
+#   TEST_REGISTRY_PREFIX  testcontainers 拉基础镜像的前缀
+#   GOLANG_IMAGE          测试阶段用的 golang 镜像
+#   BUILDKIT_IMAGE        构建阶段用的 buildkit 镜像
+#   BUILDKIT_HOST         BuildKit socket 地址（runner 挂进来的）
+#   SSL_CERT_FILE         内网 CA bundle 路径
+# ═══════════════════════════════════════════════════════════════
+
+stages:
+  - test
+  - build
+
+variables:
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: "off"
+  DOCKER_CONFIG: /tmp/.docker
+
+# ─────────────────────────────────────────────────────────────
+# 1. 测试
+# ─────────────────────────────────────────────────────────────
+test:
+  stage: test
+  # 用 Debian 版而不是 alpine 版：-race 需要 cgo + gcc
+  image: "${GOLANG_IMAGE}"
+  script:
+    - go version
+    - go mod download
+    - go install github.com/onsi/ginkgo/v2/ginkgo
+    # 注意两个命名坑（viper 前缀是 APP_）：
+    #   app.env        → APP_APP_ENV（不是 APP_ENV）
+    #   registry.prefix→ IMAGE_REPOSITORY（代码里显式 BindEnv）
+    - APP_APP_ENV=test
+      IMAGE_REPOSITORY="${TEST_REGISTRY_PREFIX}"
+      APP_OTEL_ENABLED=false
+      APP_LOG_CONSOLE_LEVEL=error
+      APP_DATABASE_LOG_LEVEL=error
+      CONFIG_PATH=../configs/config.yaml
+      "$(go env GOPATH)/bin/ginkgo" -r --race --randomize-all
+
+# ─────────────────────────────────────────────────────────────
+# 2. 构建并推送镜像（只在 master / product 上跑）
+# ─────────────────────────────────────────────────────────────
+build-image:
+  stage: build
+  image:
+    name: "${BUILDKIT_IMAGE}"
+    # ★ 这个镜像 ENTRYPOINT 就是 buildkitd，不清空会和挂进来的 socket 撞车
+    entrypoint: [""]
+  needs: ["test"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "product"'
+  script:
+    - |
+      mkdir -p /tmp/.docker
+      AUTH=$(printf '%s:%s' "$HARBOR_USER" "$HARBOR_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$HARBOR_HOST" "$AUTH" > /tmp/.docker/config.json
+
+      echo "──── buildkit worker ────"
+      buildctl debug workers
+
+      echo "──── 构建并推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA ────"
+      buildctl build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --output type=image,name="$IMAGE_REPO:$CI_COMMIT_SHORT_SHA",push=true
+    - echo "✅ 已推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA"
