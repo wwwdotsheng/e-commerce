@@ -1,0 +1,14 @@
+alertmanager:
+  config:
+    route:
+      receiver: webhook
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 3h
+    receivers:
+      - name: 'null'
+      - name: webhook
+        webhook_configs:
+          - url: 'https://webhook.site/f0ccb17b-a9c5-486b-8fc0-081919013cea'
+            send_resolved: true
