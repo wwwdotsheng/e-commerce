@@ -135,12 +135,22 @@ CI 在 GitLab CI 上执行（`test` → `build` 推镜像），开启 `--race` �
 
 ## 部署
 
-Kubernetes 清单位于 `k8s/`，包含 namespace、configmap、ingress，以及应用、PostgreSQL、Redis、RabbitMQ 的 deployment、service 与 pvc。
+Kubernetes 清单位于 `k8s/`，使用 Kustomize 管理基础配置和部署环境。
+
+基础配置适合本地或开发环境：
 
 ```bash
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/
+kubectl apply -k k8s
 ```
+
+生产环境模板位于 `k8s/overlays/production/`。使用前请根据自己的镜像仓库和域名修改其中的示例值：
+
+```bash
+kubectl diff -k k8s/overlays/production
+kubectl apply -k k8s/overlays/production
+```
+
+仓库中的 Secret 仅用于开发环境示例。生产环境应替换为随机密码和 JWT Secret，并通过 Secret 管理系统或集群外部注入，避免将真实凭据提交到 Git。
 
 ## License
 

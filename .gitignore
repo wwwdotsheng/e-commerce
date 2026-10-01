@@ -7,3 +7,6 @@ configs/certs/*.crt
 configs/certs/*.key
 
 main
+
+# Local Kubernetes deployment overrides
+k8s/overlays/harbor-local/
