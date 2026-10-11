@@ -22,6 +22,10 @@ type User struct {
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
+func (User) TableName() string {
+	return "users"
+}
+
 func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 	if u.ID == uuid.Nil {
 		id, err := uuid.NewV7()

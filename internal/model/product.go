@@ -37,6 +37,10 @@ type Product struct {
 	UpdatedAt   time.Time     `gorm:"column:updated_at;autoUpdateTime"`
 }
 
+func (Product) TableName() string {
+	return "products"
+}
+
 func (p *Product) BeforeCreate(tx *gorm.DB) (err error) {
 	if p.ID == uuid.Nil {
 		id, err := uuid.NewV7()
