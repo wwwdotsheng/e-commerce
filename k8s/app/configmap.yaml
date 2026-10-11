@@ -8,10 +8,13 @@ data:
     app:
       name: "ecommerce-api"
       port: 8080
-      env: "prod"
       ssl: false
       ssl_crt_path: ""
       ssl_key_path: ""
+      # 两个排查用的开关，集群里保持关闭：
+      # 打开会把密码打进日志 / 把原始错误返给客户端
+      print_config: false
+      expose_dev_msg: false
 
     database:
       host: "postgres"
@@ -25,6 +28,8 @@ data:
       conn_max_lifetime: 10
       time_zone: "Asia/Shanghai"
       log_level: "info"
+      # schema 变更走 migrations/，不靠启动时自动建表
+      auto_migrate: false
 
     redis:
       host: "redis"

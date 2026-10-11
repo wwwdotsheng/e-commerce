@@ -29,9 +29,6 @@ func Write(c *gin.Context, err error, data interface{}) {
 	}
 
 	if err == nil {
-		if cfg.IsDev() {
-			resp["devMsg"] = ""
-		}
 		c.JSON(http.StatusOK, resp)
 		return
 	}
@@ -58,7 +55,9 @@ func Write(c *gin.Context, err error, data interface{}) {
 	resp["userMsg"] = displayMsg
 	resp["data"] = nil
 
-	if cfg.IsDev() {
+	// devMsg 会带上原始错误（含 SQL、连接串等），默认不返回。
+	// 排查问题时用 APP_APP_EXPOSE_DEV_MSG=true 临时打开。
+	if cfg.App.ExposeDevMsg {
 		resp["devMsg"] = e.Error()
 	}
 
