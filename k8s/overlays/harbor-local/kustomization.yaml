@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../namespace
+  - ../../app
+  - ../../postgres
+  - ../../redis
+  - ../../rabbitmq
+
+patches:
+  - path: ingress-host-patch.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: ecommerce-api
+
+images:
+  - name: e-commerce
+    newName: harbor.internal/e-commerce/app
+    newTag: 0.1.1
+  - name: postgres
+    newName: harbor.internal/dockerhub/postgres
+    newTag: 15-alpine
+  - name: redis
+    newName: harbor.internal/dockerhub/redis
+    newTag: 7-alpine
+  - name: rabbitmq
+    newName: harbor.internal/dockerhub/rabbitmq
+    newTag: 3-alpine
