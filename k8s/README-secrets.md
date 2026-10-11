@@ -73,7 +73,7 @@ Vault Agent Injector
 
 ```
 手工 kubectl create secret
-或 secretGenerator + 本地 .env          ← ★ 本项目现在这里
+或 Secret 清单做模板 + 本地真值文件       ← ★ 本项目现在这里
 
 ✅ 简单，零额外组件
 ❌ 不满足判据 1 —— 从 Git 复现不出完整状态
@@ -86,9 +86,9 @@ Vault Agent Injector
 ```
 · 51 个清单文件在 Git 里
 · ecommerce namespace 21 个资源 + observability namespace 11 个资源，形状都在清单里
-· Secret 的名字和 key 名也在清单里（secretGenerator 声明）
-· .env 缺失时明确失败，不是静默生成空值：
-    error: loading KV pairs: env source files: [app-secret.env]: no such file
+· Secret 的名字和 key 名也在清单里（k8s/*/secret.yaml 是模板）
+· Secret 的值不在 Git：本地 secret.local.yaml，已加进 .gitignore
+· kustomization 刻意不引用 secret.yaml —— kubectl apply -k 不会碰 Secret
 ```
 
 **缺的：**
@@ -100,7 +100,7 @@ Vault Agent Injector
     2026-07-03 装的，没有 controller）
   → 判据 2 完全没有
 
-· 4 个 Secret 的值在本地 .env，不在 Git
+· 4 个 Secret 的值在本地 secret.local.yaml，不在 Git
   → 判据 1 差一点
 
 · 部署靠手工 kubectl apply -k（CI 里连 deploy job 都没有）
@@ -115,7 +115,7 @@ Vault Agent Injector
 ```
 上 Argo CD 时会遇到：
   sync 清单 → Deployment 引用了 ecommerce-app-secret
-            → 但 Secret 不存在（.env 在本地，Argo CD 看不到）
+            → 但 Secret 不存在（真值在本地 secret.local.yaml，Argo CD 看不到）
             → Pod 起不来
             → Application 一直 OutOfSync / Degraded
 
@@ -127,8 +127,8 @@ Vault Agent Injector
 
 | 阶段 | 做法 | 判据 1 | 判据 2 | 成本 |
 |---|---|---|---|---|
-| **0（现在）** | secretGenerator + 本地 `.env` + 手工 apply | 差一点 | ✗ | 0 |
-| **1** | CI 里 `echo "$SECRET" > .env` 再 apply | 差一点 | ✗ | CI 加 5 行 |
+| **0（现在）** | `secret.yaml` 模板 + 本地 `secret.local.yaml` + 手工 apply | 差一点 | ✗ | 0 |
+| **1** | CI 里从变量生成 `secret.local.yaml` 再 apply | 差一点 | ✗ | CI 加几行 |
 | **2** | Argo CD + 选一条路径（①或②） | ✓ | ✓ | 一个组件 + 选型 |
 
 **阶段 1 和 2 之间没有中间态** —— 上 Argo CD 就必须先解决 Secret。
@@ -203,7 +203,7 @@ redis-secret.REDIS_PASSWORD                     ← StatefulSet/redis
 如果部署者忘了跑 apply-secrets.sh 就 apply -k：
   → Deployment 引用了不存在的 Secret
   → Pod 起不来，报错只说 "secret not found"
-  → 不像之前的 .env 方案那样在 kustomize build 阶段就明确失败
+  → 没有前置校验，要等 Pod 起不来才发现
 
 缓解：apply-secrets.sh 会检查 .local.yaml 是否存在、是否还是占位符
 ```
