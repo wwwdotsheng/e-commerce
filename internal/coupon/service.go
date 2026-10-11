@@ -25,11 +25,14 @@ func NewService(db *gorm.DB, repo *Repository, metrics *Metrics) *Service {
 
 // CreateTemplate 运营创建优惠券模板
 func (s *Service) CreateTemplate(ctx context.Context, param CreateTemplateParam) (*model.CouponTemplate, error) {
-	startTime, err := time.Parse("2006-01-02 15:04:05", param.StartTime)
+	// 用 ParseInLocation 而不是 Parse：请求里的时间是「本地墙上时间」，
+	// 而 time.Parse 不带时区时按 UTC 解析，会和 time.Now()（本地时区）差 8 小时 ——
+	// 结果是刚创建的模板在 GrantCoupon 里被判成「还没开始」。
+	startTime, err := time.ParseInLocation("2006-01-02 15:04:05", param.StartTime, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("解析开始时间失败: %w", err)
 	}
-	endTime, err := time.Parse("2006-01-02 15:04:05", param.EndTime)
+	endTime, err := time.ParseInLocation("2006-01-02 15:04:05", param.EndTime, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("解析结束时间失败: %w", err)
 	}

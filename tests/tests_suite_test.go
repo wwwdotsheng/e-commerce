@@ -177,6 +177,9 @@ var _ = BeforeSuite(func() {
 		&model.Product{},
 		&model.Order{},
 		&model.StockChangeLog{},
+		&model.CouponTemplate{},
+		&model.UserCoupon{},
+		&model.Shop{},
 	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
