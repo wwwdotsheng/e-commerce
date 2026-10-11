@@ -2,11 +2,15 @@
 data/
 logs/
 tmp/
-
 configs/certs/*.crt
 configs/certs/*.key
-
 main
 
-# Local Kubernetes deployment overrides
-k8s/overlays/harbor-local/
+# ── Secret 的真实值 ─────────────────────────────────────────────
+# 模板（secret.yaml）提交进 Git，只有占位符；
+# 本地真值（secret.local.yaml）不提交。
+# 见 k8s/README-secrets.md
+k8s/**/secret.local.yaml
+# 防御性：本地开发可能用 .env（godotenv.Load() 会读它）
+.env
+k8s/**/*-secret.env

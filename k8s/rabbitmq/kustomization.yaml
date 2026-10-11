@@ -4,7 +4,10 @@ kind: Kustomization
 namespace: ecommerce
 
 resources:
-  - secret.yaml
   - service-headless.yaml
   - service.yaml
   - statefulset.yaml
+  # ★ 刻意不包含 secret.yaml。
+  #   它是模板（只有占位符），真实值由部署者单独 apply，
+  #   避免 kubectl apply -k 把集群里的真值覆盖成占位符。
+  #   见 k8s/app/secret.yaml 顶部说明 和 k8s/README-secrets.md
