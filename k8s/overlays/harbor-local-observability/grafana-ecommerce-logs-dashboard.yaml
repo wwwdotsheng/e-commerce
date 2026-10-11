@@ -1,0 +1,186 @@
+# ═══════════════════════════════════════════════════════════════
+# e-commerce 日志面板（Loki 数据源）
+#
+# 为什么建在 code 维度而不是 HTTP status：
+#   这个应用的约定是【统一返回 HTTP 200，用业务码区分结果】。
+#   所以 status 维度是全 200，没有信息量；
+#   真正的信号在日志的 code 字段里。
+#
+# ★ 关键：错误码分两类，必须分开看
+#     A 开头 —— 业务/认证类，用户操作导致，属正常
+#     B 开头 —— 系统类，才是真正的服务故障，该告警的是它
+#   混在一起看，告警会被用户输入错误淹没。
+# ═══════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ecommerce-logs-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  ecommerce-logs.json: |
+    {
+      "uid": "ecommerce-logs",
+      "title": "e-commerce 日志与错误码",
+      "description": "应用统一返回 HTTP 200，信号在业务码里。B 开头才是系统故障。",
+      "tags": ["ecommerce", "loki"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": { "from": "now-3h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "① 系统错误（B 开头）—— 这个必须为 0",
+          "description": "msg=system_fault。这是真正的服务故障，业务码 A 开头的不算。",
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum(count_over_time({namespace=\"ecommerce\"} | json | msg=\"system_fault\" [$__range]))" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0, "min": 0,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+            }, "overrides": []
+          },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "auto" }
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "② 认证失败（A02103）—— 可疑时看这里",
+          "description": "非法访问：token 格式错/签名错/被篡改。正常用户不该产生大量此码。",
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum(count_over_time({namespace=\"ecommerce\"} | json | msg=\"business_warning\" | code=\"A02103\" [$__range]))" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0, "min": 0,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 100 } ] }
+            }, "overrides": []
+          },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "auto" }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "③ 登录失败（A01103）—— 可能是撞库",
+          "description": "账号或密码错误。少量属正常，持续高位要警惕。",
+          "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum(count_over_time({namespace=\"ecommerce\"} | json | msg=\"business_warning\" | code=\"A01103\" [$__range]))" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "decimals": 0, "min": 0,
+              "thresholds": { "mode": "absolute", "steps": [
+                { "color": "green", "value": null }, { "color": "yellow", "value": 30 }, { "color": "red", "value": 200 } ] }
+            }, "overrides": []
+          },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "auto" }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "④ 总请求数（近 3 小时）",
+          "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum(count_over_time({namespace=\"ecommerce\"} | json | msg=\"HTTP Request\" [$__range]))" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "textMode": "auto" }
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "⑤ 系统错误趋势（B 开头，按 code）",
+          "description": "这张图一旦不平，就是真的有故障。",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum by (code) (count_over_time({namespace=\"ecommerce\"} | json | msg=\"system_fault\" [5m]))", "legendFormat": "{{code}}" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "min": 0,
+              "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "showPoints": "never", "stacking": { "mode": "normal" } }
+            }, "overrides": []
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "⑥ 认证类错误趋势（A021xx）",
+          "description": "A02101 令牌过期 / A02102 别处登录 / A02103 非法访问。A02103 抬头要看是不是有人在试。",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum by (code) (count_over_time({namespace=\"ecommerce\"} | json | msg=\"business_warning\" | code=~\"A0210[0-3]\" [5m]))", "legendFormat": "{{code}}" }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short", "min": 0,
+              "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 20, "showPoints": "never" }
+            }, "overrides": []
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "⑦ 请求量（按接口）",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "topk(8, sum by (path) (count_over_time({namespace=\"ecommerce\"} | json | msg=\"HTTP Request\" [5m])))", "legendFormat": "{{path}}" }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short", "min": 0, "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" } },
+            "overrides": []
+          },
+          "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "sum"] }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 8,
+          "type": "table",
+          "title": "⑧ 业务失败排行（按 code，含 A 和 B）",
+          "description": "按次数倒序。排查时先看这里有哪些码在涨。",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "topk(15, sum by (code) (count_over_time({namespace=\"ecommerce\"} | json | msg=~\"business_warning|system_fault\" [$__range])))", "format": "table", "instant": true }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short", "decimals": 0 },
+            "overrides": [ { "matcher": { "id": "byName", "options": "code" }, "properties": [ { "id": "custom.width", "value": 140 } ] } ]
+          },
+          "options": { "showHeader": true, "sortBy": [ { "displayName": "Value", "desc": true } ] }
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "⑨ HTTP 状态码（对照用，预期全是 200）",
+          "description": "因为应用统一返回 200。这里出现非 200 反而是异常信号（例如网关层的错误）。",
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 21 },
+          "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+          "targets": [
+            { "refId": "A", "expr": "sum by (status) (count_over_time({namespace=\"ecommerce\"} | json | msg=\"HTTP Request\" [5m]))", "legendFormat": "HTTP {{status}}" }
+          ],
+          "fieldConfig": {
+            "defaults": { "unit": "short", "min": 0, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never", "stacking": { "mode": "normal" } } },
+            "overrides": []
+          },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        }
+      ]
+    }

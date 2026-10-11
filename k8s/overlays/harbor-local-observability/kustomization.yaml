@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - ../../observability
   - grafana-loki-datasource.yaml
+  - grafana-ecommerce-logs-dashboard.yaml
 
 images:
   - name: grafana/loki
