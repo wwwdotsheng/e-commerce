@@ -1,5 +1,5 @@
 app:
-  name: "ecommerce-api"
+  name: ecommerce-api
   port: 8080
   ssl: false
   ssl_crt_path: ""
@@ -11,32 +11,32 @@ app:
   expose_dev_msg: false
 
 database:
-  host: "postgres-dev"
+  host: postgres-dev
   port: 5432
-  user: "postgres"
-  password: "postgres"
-  db_name: "postgres"
+  user: postgres
+  password: postgres
+  db_name: postgres
   ssl_mode: disable
   max_idle_conns: 100
   max_open_conns: 100
   conn_max_lifetime: 10
-  time_zone: "Asia/Shanghai"
-  log_level: "info"
+  time_zone: Asia/Shanghai
+  log_level: info
   # schema 变更走 migrations/，不靠启动时自动建表。
   # 本地开发用 APP_DATABASE_AUTO_MIGRATE=true 打开。
   auto_migrate: false
 
 redis:
-  host: "redis"
+  host: redis
   port: 6379
   password:
   db: 0
   pool_size: 10
 
 rabbitmq:
-  user: "guest"
-  password: "guest"
-  host: "rabbitmq"
+  user: guest
+  password: guest
+  host: rabbitmq
   port: 5672
 
 registry:
@@ -44,9 +44,9 @@ registry:
   prefix: ""
 
 log:
-  console_level: "debug"
-  file_level: "debug"
-  filename: "./logs/app.log"
+  console_level: debug
+  file_level: debug
+  filename: ./logs/app.log
   max_size: 100
   max_backups: 3
   max_age: 28
@@ -65,23 +65,23 @@ auth:
 otel:
   enabled: true
   endpoint:
-    trace_endpoint: "tempo:4317"
-    metric_endpoint: "prometheus:9090"
-  service_name: "e-commerce"
+    trace_endpoint: tempo:4317
+    metric_endpoint: prometheus:9090
+  service_name: e-commerce
 
 test_images:
-  postgres: "postgres:15-alpine"
-  redis: "redis:7-alpine"
-  rabbitmq: "rabbitmq:3-alpine"
+  postgres: postgres:15-alpine
+  redis: redis:7-alpine
+  rabbitmq: rabbitmq:3-alpine
 
 
 elasticsearch:
-  host: "elasticsearch"
+  host: elasticsearch
   port: 9200
 
 order_mq:
-  exchange: "dlx_exchange"
-  consumer_queue: "order_timeout_queue"
-  delay_queue: "order_delay_queue"
-  routing_key: "timeout"
+  exchange: dlx_exchange
+  consumer_queue: order_timeout_queue
+  delay_queue: order_delay_queue
+  routing_key: timeout
   ttl_ms: 30000

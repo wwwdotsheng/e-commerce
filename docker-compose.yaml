@@ -7,40 +7,40 @@ services:
     container_name: golang-app
     restart: always
     volumes:
-      - .:/app
-      - ./configs/config.yaml:/etc/app/config.yaml:ro
+    - .:/app
+    - ./configs/config.yaml:/etc/app/config.yaml:ro
     ports:
-      - "10000:8080"
+    - 10000:8080
     networks:
-      - monitor_net
+    - monitor_net
     depends_on:
-      - postgres-dev
-      - redis
-      - prometheus
-      - tempo
-      - rabbitmq
+    - postgres-dev
+    - redis
+    - prometheus
+    - tempo
+    - rabbitmq
     command: air -c .air.toml -- -c /etc/app/config.yaml
     environment:
       # 本地开发：表由 AutoMigrate 建（生产走 migrations/，不打开）
-      APP_DATABASE_AUTO_MIGRATE: "true"
+      APP_DATABASE_AUTO_MIGRATE: 'true'
       # config.yaml 里没有默认值了，Validate() 会拒绝空值。
       # 想用自己的值就先 export APP_AUTH_TOKEN_SECRET
-      APP_AUTH_TOKEN_SECRET: "${APP_AUTH_TOKEN_SECRET:-local-dev-only-not-for-production}"
+      APP_AUTH_TOKEN_SECRET: ${APP_AUTH_TOKEN_SECRET:-local-dev-only-not-for-production}
   postgres-dev:
     image: ${IMAGE_REPOSITORY:-}postgres:15
     container_name: postgres-dev
     restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - TZ=Asia/Shanghai
-      - PGTZ=Asia/Shanghai
+    - POSTGRES_USER=postgres
+    - POSTGRES_PASSWORD=postgres
+    - TZ=Asia/Shanghai
+    - PGTZ=Asia/Shanghai
     ports:
-      - "5432:5432"
+    - 5432:5432
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+    - ./data/postgres:/var/lib/postgresql/data
     networks:
-      - monitor_net
+    - monitor_net
     deploy:
       resources:
         limits:
@@ -51,11 +51,11 @@ services:
     container_name: redis-dev
     restart: always
     ports:
-      - "6379:6379"
+    - 6379:6379
     volumes:
-      - ./data/redis:/data
+    - ./data/redis:/data
     networks:
-      - monitor_net
+    - monitor_net
     deploy:
       resources:
         limits:
@@ -66,15 +66,15 @@ services:
     container_name: es-dev
     restart: always
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
+    - discovery.type=single-node
+    - xpack.security.enabled=false
+    - ES_JAVA_OPTS=-Xms256m -Xmx256m
     ports:
-      - "9200:9200"
+    - 9200:9200
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+    - es_data:/usr/share/elasticsearch/data
     networks:
-      - monitor_net
+    - monitor_net
     deploy:
       resources:
         limits:
@@ -85,85 +85,88 @@ services:
     container_name: ecommerce-mq
     restart: always
     ports:
-      - "5672:5672"
-      - "15672:15672"
+    - 5672:5672
+    - 15672:15672
     volumes:
-      - ./data/rabbitmq:/var/lib/rabbitmq
+    - ./data/rabbitmq:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - check_running
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - monitor_net
+    - monitor_net
   prometheus:
     image: ${IMAGE_REPOSITORY:-}prom/prometheus:v3.9.1
     container_name: prometheus
     restart: always
     ports:
-      - "9090:9090"
+    - 9090:9090
     volumes:
-      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
+    - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--web.enable-otlp-receiver"
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --web.enable-otlp-receiver
     networks:
-      - monitor_net
+    - monitor_net
   tempo:
     image: ${IMAGE_REPOSITORY:-}grafana/tempo:2.10.0
     container_name: tempo
     restart: always
     command:
-      - "-config.file=/etc/tempo.yaml"
+    - -config.file=/etc/tempo.yaml
     volumes:
-      - ./configs/tempo.yaml:/etc/tempo.yaml
+    - ./configs/tempo.yaml:/etc/tempo.yaml
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "3200:3200"
+    - 4317:4317
+    - 4318:4318
+    - 3200:3200
     networks:
-      - monitor_net
+    - monitor_net
   loki:
     image: ${IMAGE_REPOSITORY:-}grafana/loki:3.6.4
     container_name: loki
     restart: always
     ports:
-      - "3100:3100"
+    - 3100:3100
     volumes:
-      - ./configs/loki-config.yaml:/etc/loki/local-config.yaml
-      - ./data/loki-data:/tmp/loki
+    - ./configs/loki-config.yaml:/etc/loki/local-config.yaml
+    - ./data/loki-data:/tmp/loki
     command: -config.file=/etc/loki/local-config.yaml
     networks:
-      - monitor_net
+    - monitor_net
   promtail:
     image: ${IMAGE_REPOSITORY:-}grafana/promtail:3.6.4
     container_name: promtail
     restart: always
     volumes:
-      - ./logs:/var/log
-      - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
-      - ./data/promtail-positions:/tmp
+    - ./logs:/var/log
+    - ./configs/promtail-config.yaml:/etc/promtail/config.yaml
+    - ./data/promtail-positions:/tmp
     command: -config.file=/etc/promtail/config.yaml
     networks:
-      - monitor_net
+    - monitor_net
   grafana:
     image: ${IMAGE_REPOSITORY:-}grafana/grafana:12.3.2
     container_name: grafana
     restart: always
     ports:
-      - "3000:3000"
+    - 3000:3000
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    - GF_AUTH_ANONYMOUS_ENABLED=true
+    - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
-      - ./data/grafana:/var/lib/grafana
+    - ./data/grafana:/var/lib/grafana
     networks:
-      - monitor_net
+    - monitor_net
 networks:
   monitor_net:
     driver: bridge
 volumes:
-  es_data:
+  es_data: null
