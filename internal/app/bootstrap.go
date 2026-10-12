@@ -34,10 +34,10 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
-	// 打印完整配置会把 PostgreSQL/Redis/RabbitMQ 密码和 JWT 密钥打进日志，
-	// 所以默认关闭。要排查配置问题时用 APP_APP_PRINT_CONFIG=true 临时打开。
+	gin.SetMode(conf.App.GinMode)
+	// Diagnostic output is always redacted, including when explicitly enabled.
 	if conf.App.PrintConfig {
-		data, err := json.MarshalIndent(conf, "", "  ")
+		data, err := json.MarshalIndent(conf.Redacted(), "", "  ")
 		if err != nil {
 			cancel()
 			return ctx, nil, nil, fmt.Errorf("无法初始化配置%w", err)
@@ -89,7 +89,7 @@ func SetupRouter(
 	// 引擎固定用 gin.New()，Recovery 显式挂上 —— 之前 dev 用 gin.Default()、
 	// 其他环境用 gin.New()，结果非 dev 环境反而没有 Recovery。
 	// 请求日志由项目自己的 middleware 负责，不用 gin.Logger()。
-	// gin 的运行模式交给 GIN_MODE 环境变量（部署时设 release），不在代码里分支。
+	// Gin logging mode comes from app.gin_mode, independently of feature switches.
 	r := gin.New()
 	r.Use(gin.Recovery())
 	err := r.SetTrustedProxies([]string{})
@@ -185,9 +185,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("数据库初始化失败: %w", err)
 	}
 
-	// schema 变更走 migrations/，不靠应用启动时自动建表。
-	// 之前这里是 if !config.IsProd()，生产跳过 —— 而 migrations/ 当时并不存在，
-	// 于是生产库的 schema 一直落后于代码（就是那次「缺列缺表」的根因）。
+	// Schema creation is controlled only by database.auto_migrate.
 	if config.Database.AutoMigrate {
 		if err := db.AutoMigrate(
 			&model.User{},
@@ -257,27 +255,21 @@ func Run(ctx context.Context, config config.AppConfig) error {
 
 	productRepo := product.NewRepository(db)
 
-	esClient, err := esconn.Init(ctx, esconn.Config{
-		Host: config.Elasticsearch.Host,
-		Port: config.Elasticsearch.Port,
-	})
-	if err != nil {
-		logger.Warn("ES 初始化失败，搜索功能不可用", zap.Error(err))
-	}
-
-	var productSvc *product.Service
-	if esClient != nil {
+	productSvc := product.NewService(db, productRepo, nil, logger)
+	if config.Elasticsearch.Enabled {
+		esClient, err := esconn.Init(ctx, esconn.Config{Host: config.Elasticsearch.Host, Port: config.Elasticsearch.Port})
+		if err != nil {
+			return fmt.Errorf("enabled Elasticsearch initialization failed: %w", err)
+		}
 		productSvc = product.NewService(db, productRepo, esClient, logger)
 		go func() {
-			products, err := productRepo.FindAll(context.Background())
+			products, err := productRepo.FindAll(ctx)
 			if err != nil {
-				logger.Warn("ES 全量重建失败：查询产品列表失败", zap.Error(err))
+				logger.Warn("ES rebuild query failed", zap.Error(err))
 				return
 			}
-			productSvc.RebuildIndex(context.Background(), products)
+			productSvc.RebuildIndex(ctx, products)
 		}()
-	} else {
-		productSvc = product.NewService(db, productRepo, nil, logger)
 	}
 
 	orderRepo := order.NewRepository(db, mqCh, &config.OrderMQ)
