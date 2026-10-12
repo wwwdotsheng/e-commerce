@@ -10,3 +10,6 @@ logs/
 k8s/**/secret.local.yaml
 tmp/
 test-results/
+k8s/**/*-secret.env
+configs/certs/*.key
+configs/certs/*.crt
