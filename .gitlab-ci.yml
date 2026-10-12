@@ -37,6 +37,8 @@ test:
   script:
     - go version
     - go mod download
+    - go vet ./...
+    - go test -race ./internal/order
     - go install github.com/onsi/ginkgo/v2/ginkgo
     # 环境变量名的规则（viper 前缀是 APP_，点号换成下划线）：
     #   app.env         → APP_APP_ENV（已废弃，不再用环境名分支）
@@ -53,7 +55,26 @@ test:
       APP_LOG_CONSOLE_LEVEL=error
       APP_DATABASE_LOG_LEVEL=error
       CONFIG_PATH=../configs/config.yaml
-      "$(go env GOPATH)/bin/ginkgo" -r --race --randomize-all
+      "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --junit-report=integration.xml --output-dir=test-results ./tests
+
+  artifacts:
+    when: always
+    paths:
+      - test-results/
+    reports:
+      junit: test-results/integration.xml
+
+# External HTTP acceptance is opt-in.
+api-acceptance:
+  stage: test
+  image: "${GOLANG_IMAGE}"
+  allow_failure: false
+  rules:
+    - if: '$API_TEST_BASE_URL != ""'
+      when: manual
+    - when: never
+  script:
+    - go test ./tests/acceptance -v -count=1 -timeout=3m
 
 # ─────────────────────────────────────────────────────────────
 # 2. 构建并推送镜像（只在 master / product 上跑）

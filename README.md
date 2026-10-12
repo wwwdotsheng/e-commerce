@@ -123,6 +123,8 @@ go test ./tests/... -v
 
 CI 在 GitLab CI 上执行（`test` → `build` 推镜像），开启 `--race` 竞态检测与 `--randomize-all` 用例乱序执行。
 
+接口验收、并发/超时回归、Docker 测试脚本与 CI 报告说明见 [测试说明](docs/testing.md)。
+
 ## 可观测性
 
 | 类型 | 导出方式 | 后端 |
