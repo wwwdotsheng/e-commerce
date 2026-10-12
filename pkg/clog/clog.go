@@ -42,19 +42,26 @@ func Init(config Config) *zap.Logger {
 	jsonEncoder := zapcore.NewJSONEncoder(encoderConfig)
 
 	consoleSyncer := zapcore.AddSync(os.Stdout)
-	fileSyncer := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   config.Filename,
-		MaxSize:    config.MaxSize,
-		MaxBackups: config.MaxBackups,
-		MaxAge:     config.MaxAge,
-	})
 
-	core := zapcore.NewTee(
-		zapcore.NewCore(jsonEncoder, fileSyncer, parseLevel(config.FileLevel)),
+	cores := []zapcore.Core{
 		zapcore.NewCore(jsonEncoder, consoleSyncer, parseLevel(config.ConsoleLevel)),
-	)
+	}
 
-	return zap.New(core, zap.AddCaller())
+	// 文件输出是可选的。Kubernetes 环境通常将日志写入 stdout，
+	// 由 containerd 和日志 Agent 负责采集；本地开发仍可通过配置文件输出到磁盘。
+	if config.Filename != "" && config.FileLevel != "" {
+		fileSyncer := zapcore.AddSync(&lumberjack.Logger{
+			Filename:   config.Filename,
+			MaxSize:    config.MaxSize,
+			MaxBackups: config.MaxBackups,
+			MaxAge:     config.MaxAge,
+		})
+		cores = append(cores,
+			zapcore.NewCore(jsonEncoder, fileSyncer, parseLevel(config.FileLevel)),
+		)
+	}
+
+	return zap.New(zapcore.NewTee(cores...), zap.AddCaller())
 }
 
 func Close(l *zap.Logger) {

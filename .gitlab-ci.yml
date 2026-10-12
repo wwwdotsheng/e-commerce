@@ -1,0 +1,126 @@
+# ═══════════════════════════════════════════════════════════════
+# e-commerce 的 GitLab CI
+#
+#   test         go vet + ginkgo -race（testcontainers 依赖 docker.sock）
+#   build-image  rootless BuildKit 构建并推送镜像
+#
+# 仓库里不写任何内网地址，下面这些值全部放在
+# Settings → CI/CD → Variables 里（本文件只引用变量名）：
+#
+#   HARBOR_HOST           镜像仓库域名
+#   HARBOR_USER           镜像仓库账号
+#   HARBOR_PASSWORD       镜像仓库密码（masked）
+#   IMAGE_REPO            业务镜像完整路径
+#   REGISTRY_PREFIX       Testcontainers 基础镜像前缀
+#   BUILD_REGISTRY_PREFIX 可选：构建镜像前缀，留空时回退到 REGISTRY_PREFIX
+#   GOLANG_IMAGE          测试阶段用的 golang 镜像
+#   BUILDKIT_IMAGE        构建阶段用的 buildkit 镜像
+#   BUILDKIT_HOST         BuildKit socket 地址（runner 挂进来的）
+#   SSL_CERT_FILE         内网 CA bundle 路径
+#   API_TEST_IMAGE        Go + kubectl 验收工具镜像
+#   KUBE_CONFIG           测试环境 kubeconfig（file 变量）
+#   API_TEST_BASE_URL     测试服务 HTTP origin
+#   API_TEST_HOST         Ingress Host（若 URL 使用节点 IP）
+# ═══════════════════════════════════════════════════════════════
+
+stages:
+  - test
+  - build
+  - verify
+
+variables:
+  GOPROXY: https://goproxy.cn,direct
+  GOSUMDB: "off"
+  DOCKER_CONFIG: /tmp/.docker
+
+# ─────────────────────────────────────────────────────────────
+# 1. 测试
+# ─────────────────────────────────────────────────────────────
+test:
+  stage: test
+  # 用 Debian 版而不是 alpine 版：-race 需要 cgo + gcc
+  image: "${GOLANG_IMAGE}"
+  script:
+    - go version
+    - go mod download
+    - go vet ./...
+    - go test -race ./internal/order
+    - go install github.com/onsi/ginkgo/v2/ginkgo
+    # 环境变量名的规则（viper 前缀是 APP_，点号换成下划线）：
+    #   app.env         → APP_APP_ENV（已废弃，不再用环境名分支）
+    #   database.auto_migrate → APP_DATABASE_AUTO_MIGRATE
+    #   registry.prefix → IMAGE_REPOSITORY（代码里显式 BindEnv）
+    #
+    # 下面两个是测试必须给的：
+    #   AUTO_MIGRATE 测试库的表由 AutoMigrate 建，不走 migrations/
+    #   TOKEN_SECRET config.Validate() 会拒绝空值和示例值
+    - APP_DATABASE_AUTO_MIGRATE=true
+      APP_AUTH_TOKEN_SECRET=ci-only-token-secret
+      IMAGE_REPOSITORY="${REGISTRY_PREFIX}"
+      APP_OTEL_ENABLED=false
+      APP_LOG_CONSOLE_LEVEL=error
+      APP_DATABASE_LOG_LEVEL=error
+      CONFIG_PATH=../configs/config.yaml
+      "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --junit-report=integration.xml --output-dir=test-results ./tests
+
+  artifacts:
+    when: always
+    paths:
+      - test-results/
+    reports:
+      junit: test-results/integration.xml
+
+# Product deploys and verifies the test environment automatically.
+api-acceptance:
+  stage: verify
+  image: "${API_TEST_IMAGE}"
+  needs:
+    - job: build-image
+      artifacts: false
+  resource_group: ecommerce-test
+  environment:
+    name: ecommerce-test
+    url: "$API_TEST_BASE_URL"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "product"'
+      when: on_success
+    - when: never
+  script:
+    - export KUBECONFIG="$KUBE_CONFIG"
+    - bash scripts/deploy-and-test-api.sh
+  artifacts:
+    when: always
+    paths:
+      - test-results/
+
+# ─────────────────────────────────────────────────────────────
+# 2. 构建并推送镜像（只在 master / product 上跑）
+# ─────────────────────────────────────────────────────────────
+build-image:
+  stage: build
+  image:
+    name: "${BUILDKIT_IMAGE}"
+    # ★ 这个镜像 ENTRYPOINT 就是 buildkitd，不清空会和挂进来的 socket 撞车
+    entrypoint: [""]
+  needs:
+    - job: test
+      artifacts: false
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "product"'
+  script:
+    - |
+      mkdir -p /tmp/.docker
+      AUTH=$(printf '%s:%s' "$HARBOR_USER" "$HARBOR_PASSWORD" | base64 | tr -d '\n')
+      printf '{"auths":{"%s":{"auth":"%s"}}}' "$HARBOR_HOST" "$AUTH" > /tmp/.docker/config.json
+
+      echo "──── buildkit worker ────"
+      buildctl debug workers
+
+      echo "──── 构建并推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA ────"
+      buildctl build \
+        --frontend dockerfile.v0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt build-arg:REGISTRY_PREFIX="${BUILD_REGISTRY_PREFIX:-$REGISTRY_PREFIX}" \
+        --output type=image,name="$IMAGE_REPO:$CI_COMMIT_SHORT_SHA",push=true
+    - echo "✅ 已推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA"

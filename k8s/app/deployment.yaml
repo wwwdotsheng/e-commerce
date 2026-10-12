@@ -15,52 +15,76 @@ spec:
       labels:
         app: ecommerce-api
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
-        - name: api
-          image: docker.io/library/ecommerce-api:latest
+        - name: ecommerce-api
+          image: e-commerce:0.1.0
           imagePullPolicy: IfNotPresent
-          command: ["/app/main"]
           ports:
-            - containerPort: 8080
-              name: http
+            - name: http
+              containerPort: 8080
+          env:
+            - name: CONFIG_PATH
+              value: /app/configs/config.yaml
+            # gin 的运行模式由它决定（代码里不再 SetMode）。
+            # 不设就是 debug：会打一堆警告，还有额外的运行时开销。
+            - name: GIN_MODE
+              value: release
+            - name: APP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: APP_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_PASSWORD
+            - name: APP_RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: RABBITMQ_DEFAULT_PASS
+            - name: APP_AUTH_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: ecommerce-app-secret
+                  key: AUTH_TOKEN_SECRET
           volumeMounts:
-            - name: config
-              mountPath: /etc/app
+            - name: app-config
+              mountPath: /app/configs/config.yaml
+              subPath: config.yaml
               readOnly: true
-            - name: logs
-              mountPath: /app/logs
           resources:
             requests:
-              cpu: 200m
-              memory: 256Mi
+              cpu: 100m
+              memory: 128Mi
             limits:
               cpu: "1"
               memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 15
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
+              path: /ready
+              port: http
             periodSeconds: 5
-          env:
-            - name: APP_APP_ENV
-              value: "DEV"
-            - name: APP_AUTH_TOKEN_SECRET
-              value: "this-is-a-strong-secret-for-dev-2024"
-            - name: CONFIG_PATH
-              value: "/etc/app/config.yaml"
+            timeoutSeconds: 3
+            failureThreshold: 3
       volumes:
-        - name: config
+        - name: app-config
           configMap:
-            name: app-config
-            items:
-              - key: config.yaml
-                path: config.yaml
-        - name: logs
-          emptyDir: {}
+            name: ecommerce-config

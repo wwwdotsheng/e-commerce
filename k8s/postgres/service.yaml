@@ -3,10 +3,12 @@ kind: Service
 metadata:
   name: postgres
   namespace: ecommerce
+  labels:
+    app: postgres
 spec:
   selector:
     app: postgres
   ports:
-    - port: 5432
+    - name: postgres
+      port: 5432
       targetPort: 5432
-  type: ClusterIP

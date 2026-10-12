@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -99,26 +100,35 @@ func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.
 	)
 }
 
+// FindByIdempotencyKey must also validate ownership and payload at the service layer.
+func (repo *Repository) FindByIdempotencyKey(ctx context.Context, key string) (*model.Order, error) {
+	var o model.Order
+	err := repo.GetDB(ctx).Where("idempotency_key = ?", key).First(&o).Error
+	return &o, err
+}
+
+// HandleOrderTimeout runs inside the service transaction. A nil order means
+// another transition already handled it; callers must not release resources.
 func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (*model.Order, error) {
-	var order model.Order
-	err := repo.GetDB(ctx).Where("id = ?", orderID).First(&order).Error
-	if err != nil {
-		return nil, fmt.Errorf("查询订单失败 %s: %w", orderID, err)
+	var o model.Order
+	if err := repo.GetDB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", orderID).First(&o).Error; err != nil {
+		return nil, fmt.Errorf("query timeout order %s: %w", orderID, err)
 	}
-
-	if order.Status != model.OrderStatusProcessing {
-		return &order, nil // 已处理过
+	if o.Status != model.OrderStatusProcessing {
+		return nil, nil
 	}
-
-	result := repo.GetDB(ctx).
-		Model(&model.Order{}).
+	result := repo.GetDB(ctx).Model(&model.Order{}).
 		Where("id = ? AND status = ?", orderID, model.OrderStatusProcessing).
 		Update("status", model.OrderStatusTimeout)
 	if result.Error != nil {
-		return nil, fmt.Errorf("更新订单超时状态失败 %s: %w", orderID, result.Error)
+		return nil, fmt.Errorf("close timeout order %s: %w", orderID, result.Error)
 	}
-
-	return &order, nil
+	if result.RowsAffected != 1 {
+		return nil, nil
+	}
+	o.Status = model.OrderStatusTimeout
+	return &o, nil
 }
 
 func (repo *Repository) ListOrdersByUserID(ctx context.Context, userID uuid.UUID, pageNum, pageSize int) ([]*model.Order, int64, error) {

@@ -3,10 +3,12 @@ kind: Service
 metadata:
   name: redis
   namespace: ecommerce
+  labels:
+    app: redis
 spec:
   selector:
     app: redis
   ports:
-    - port: 6379
-      targetPort: 6379
-  type: ClusterIP
+    - name: redis
+      port: 6379
+      targetPort: redis

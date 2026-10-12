@@ -21,7 +21,11 @@ services:
       - rabbitmq
     command: air -c .air.toml -- -c /etc/app/config.yaml
     environment:
-      APP_APP_ENV: DEV
+      # 本地开发：表由 AutoMigrate 建（生产走 migrations/，不打开）
+      APP_DATABASE_AUTO_MIGRATE: "true"
+      # config.yaml 里没有默认值了，Validate() 会拒绝空值。
+      # 想用自己的值就先 export APP_AUTH_TOKEN_SECRET
+      APP_AUTH_TOKEN_SECRET: "${APP_AUTH_TOKEN_SECRET:-local-dev-only-not-for-production}"
   postgres-dev:
     image: ${IMAGE_REPOSITORY:-}postgres:15
     container_name: postgres-dev
