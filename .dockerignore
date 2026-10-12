@@ -4,3 +4,8 @@ logs/
 .idea/
 .git/
 *.log
+
+.env
+.env.*
+k8s/**/secret.local.yaml
+tmp/
