@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/app"
 	"e-commerce/internal/auth"
+	"e-commerce/internal/config"
 	"e-commerce/internal/coupon"
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
@@ -16,6 +17,7 @@ import (
 	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -62,6 +64,9 @@ var (
 )
 
 var logger *zap.Logger
+var testOrderService *order.Service
+var testOrderMQConfig config.OrderMQConfig
+var testRabbitMQURL string
 
 var _ = BeforeSuite(func() {
 	if os.Getenv("CONFIG_PATH") == "" {
@@ -83,7 +88,7 @@ var _ = BeforeSuite(func() {
 		log.Fatalf("应用启动失败：%v", err)
 	}
 
-	defer stop()
+	appStopFunc = stop
 
 	// --- PostgreSQL ---
 	pgContainer, err = postgres.Run(
@@ -161,6 +166,7 @@ var _ = BeforeSuite(func() {
 
 	config.RabbitMQ.Host = rmqHost
 	config.RabbitMQ.Port = rmqPort.Int()
+	testRabbitMQURL = fmt.Sprintf("amqp://%s:%s@%s:%d/", config.RabbitMQ.User, config.RabbitMQ.Password, rmqHost, rmqPort.Int())
 
 	// 路由初始化 ======================================================
 	logger = clog.L(ctx)
@@ -249,6 +255,8 @@ var _ = BeforeSuite(func() {
 	shopRepo := shop.NewRepository(testDB)
 	shopH := shop.NewHandler(shop.NewService(shopRepo))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
+	testOrderService = orderSvc
+	testOrderMQConfig = config.OrderMQ
 
 	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
 	if err != nil {

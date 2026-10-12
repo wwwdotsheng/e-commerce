@@ -131,31 +131,43 @@ func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) e
 
 // DeductStock 下单扣减库存（无 publisher 校验，事务内使用）
 func (repo *Repository) DeductStock(ctx context.Context, productID uuid.UUID, quantity int) error {
-	var result struct {
-		ID    uuid.UUID
-		Stock int
-	}
-	err := repo.GetDB(ctx).Model(&model.Product{}).
+	var updated model.Product
+	// RETURNING populates the model directly. Scan would run a second SELECT
+	// with stock >= quantity, incorrectly rejecting the final units after update.
+	result := repo.GetDB(ctx).Model(&updated).
 		Where("id = ? AND stock >= ?", productID, quantity).
-		Clauses(clause.Returning{Columns: []clause.Column{
-			{Name: "id"},
-			{Name: "stock"},
-		}}).
+		Clauses(clause.Returning{}).
 		Updates(map[string]interface{}{
 			"stock":      gorm.Expr("stock - ?", quantity),
 			"version":    gorm.Expr("version + 1"),
 			"updated_at": time.Now(),
-		}).
-		Scan(&result).Error
-	if err != nil {
-		return err
+		})
+	if result.Error != nil {
+		return result.Error
 	}
-
-	if result.ID == uuid.Nil {
+	if result.RowsAffected != 1 {
 		return errno.ErrProductStockInsufficient
 	}
+	return repo.createStockChangeLog(ctx, productID, -quantity, updated.Stock+quantity, model.StockChangeOrder)
+}
 
-	return repo.createStockChangeLog(ctx, productID, -quantity, result.Stock+quantity, model.StockChangeOrder)
+// RestoreOrderStock is used only within the timeout transaction.
+func (repo *Repository) RestoreOrderStock(ctx context.Context, productID uuid.UUID, quantity int) error {
+	var updated model.Product
+	result := repo.GetDB(ctx).Model(&updated).Where("id = ?", productID).
+		Clauses(clause.Returning{}).
+		Updates(map[string]interface{}{
+			"stock":      gorm.Expr("stock + ?", quantity),
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return repo.createStockChangeLog(ctx, productID, quantity, updated.Stock-quantity, model.StockChangeTimeout)
 }
 
 type ListProductsData struct {
