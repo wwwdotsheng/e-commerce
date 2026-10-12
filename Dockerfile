@@ -19,14 +19,13 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod\
     go build -o main ./cmd/
 
-# 运行阶段 (仅用于生产环境打包)
-FROM ${REGISTRY_PREFIX}library/alpine:latest
+# Runtime image shared by Compose and Kubernetes
+FROM ${REGISTRY_PREFIX}library/alpine:latest AS runtime
 WORKDIR /app
 # 安装时区数据
 RUN apk add --no-cache tzdata
 ENV TZ=Asia/Shanghai
 
 COPY --from=builder /app/main .
-COPY --from=builder /go/bin/air /usr/local/bin/air
 
 CMD ["./main"]

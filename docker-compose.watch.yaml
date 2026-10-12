@@ -1,0 +1,10 @@
+# Explicit hot-reload tooling; no application environment selector.
+services:
+  app:
+    build:
+      target: builder
+    command: ["air", "-c", ".air.toml"]
+    volumes:
+      - .:/app
+    environment:
+      CONFIG_PATH: /app/configs/config.yaml

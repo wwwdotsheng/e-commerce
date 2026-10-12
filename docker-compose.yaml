@@ -3,42 +3,79 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: builder
-    container_name: golang-app
+      target: runtime
+      args:
+        REGISTRY_PREFIX: ${BUILD_REGISTRY_PREFIX:-${IMAGE_REPOSITORY:-}}
     restart: always
     volumes:
-    - .:/app
-    - ./configs/config.yaml:/etc/app/config.yaml:ro
+    - ./configs/config.yaml:/app/configs/config.yaml:ro
+    - ./logs:/app/logs
     ports:
-    - 10000:8080
+    - ${APP_HTTP_PORT:-10000}:${APP_APP_PORT:-8080}
     networks:
     - monitor_net
     depends_on:
-    - postgres-dev
-    - redis
-    - prometheus
-    - tempo
-    - rabbitmq
-    command: air -c .air.toml -- -c /etc/app/config.yaml
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command:
+    - ./main
     environment:
-      # 本地开发：表由 AutoMigrate 建（生产走 migrations/，不打开）
-      APP_DATABASE_AUTO_MIGRATE: 'true'
-      # config.yaml 里没有默认值了，Validate() 会拒绝空值。
-      # 想用自己的值就先 export APP_AUTH_TOKEN_SECRET
-      APP_AUTH_TOKEN_SECRET: ${APP_AUTH_TOKEN_SECRET:-local-dev-only-not-for-production}
-  postgres-dev:
-    image: ${IMAGE_REPOSITORY:-}postgres:15
-    container_name: postgres-dev
+      CONFIG_PATH: /app/configs/config.yaml
+      APP_APP_GIN_MODE: ${APP_APP_GIN_MODE:-release}
+      APP_DATABASE_HOST: postgres
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Set APP_DATABASE_PASSWORD}
+      APP_DATABASE_AUTO_MIGRATE: ${APP_DATABASE_AUTO_MIGRATE:-false}
+      APP_RABBITMQ_HOST: rabbitmq
+      APP_RABBITMQ_USER: ${APP_RABBITMQ_USER:-ecommerce}
+      APP_RABBITMQ_PASSWORD: ${APP_RABBITMQ_PASSWORD:?Set APP_RABBITMQ_PASSWORD}
+      APP_REDIS_HOST: redis
+      APP_REDIS_PASSWORD: ${APP_REDIS_PASSWORD:-}
+      APP_AUTH_TOKEN_SECRET: ${APP_AUTH_TOKEN_SECRET:?Set APP_AUTH_TOKEN_SECRET}
+      APP_APP_PRINT_CONFIG: ${APP_APP_PRINT_CONFIG:-false}
+      APP_APP_EXPOSE_DEV_MSG: ${APP_APP_EXPOSE_DEV_MSG:-false}
+      APP_OTEL_ENABLED: ${APP_OTEL_ENABLED:-false}
+      APP_OTEL_ENDPOINT_TRACE_ENDPOINT: tempo:4317
+      APP_OTEL_ENDPOINT_METRIC_ENDPOINT: prometheus:9090
+      APP_ELASTICSEARCH_ENABLED: ${APP_ELASTICSEARCH_ENABLED:-false}
+      APP_ELASTICSEARCH_HOST: elasticsearch
+      APP_LOG_CONSOLE_LEVEL: ${APP_LOG_CONSOLE_LEVEL:-info}
+      APP_LOG_FILE_LEVEL: ${APP_LOG_FILE_LEVEL:-}
+      APP_LOG_FILENAME: ${APP_LOG_FILENAME:-}
+      APP_ORDER_MQ_TTL_MS: ${APP_ORDER_MQ_TTL_MS:-30000}
+      APP_APP_PORT: ${APP_APP_PORT:-8080}
+      APP_DATABASE_PORT: '5432'
+      APP_DATABASE_USER: ${APP_DATABASE_USER:-postgres}
+      APP_DATABASE_DB_NAME: ${APP_DATABASE_DB_NAME:-ecommerce}
+      APP_REDIS_PORT: '6379'
+      APP_RABBITMQ_PORT: '5672'
+    env_file:
+    - path: .env
+      required: false
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1:${APP_APP_PORT:-8080}/ready
+      interval: 3s
+      timeout: 3s
+      start_period: 20s
+      retries: 20
+  postgres:
+    image: ${IMAGE_REPOSITORY:-}postgres:15-alpine
     restart: always
     environment:
-    - POSTGRES_USER=postgres
-    - POSTGRES_PASSWORD=postgres
-    - TZ=Asia/Shanghai
-    - PGTZ=Asia/Shanghai
+      POSTGRES_USER: ${APP_DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${APP_DATABASE_PASSWORD:?Set APP_DATABASE_PASSWORD}
+      POSTGRES_DB: ${APP_DATABASE_DB_NAME:-ecommerce}
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
     ports:
-    - 5432:5432
+    - ${POSTGRES_PORT:-5432}:5432
     volumes:
-    - ./data/postgres:/var/lib/postgresql/data
+    - postgres_data:/var/lib/postgresql/data
     networks:
     - monitor_net
     deploy:
@@ -46,14 +83,20 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 3s
+      timeout: 3s
+      retries: 20
   redis:
-    image: ${IMAGE_REPOSITORY:-}redis:alpine3.22
-    container_name: redis-dev
+    image: ${IMAGE_REPOSITORY:-}redis:7-alpine
     restart: always
     ports:
-    - 6379:6379
+    - ${REDIS_PORT:-6379}:6379
     volumes:
-    - ./data/redis:/data
+    - redis_data:/data
     networks:
     - monitor_net
     deploy:
@@ -61,9 +104,22 @@ services:
         limits:
           cpus: '2.0'
           memory: 4G
+    environment:
+      REDIS_PASSWORD: ${APP_REDIS_PASSWORD:-}
+    command:
+    - sh
+    - -ec
+    - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - if [ -n "$$REDIS_PASSWORD" ]; then REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli
+        ping; else redis-cli ping; fi
+      interval: 3s
+      timeout: 3s
+      retries: 20
   elasticsearch:
     image: ${IMAGE_REPOSITORY:-}elasticsearch:8.17.3
-    container_name: es-dev
     restart: always
     environment:
     - discovery.type=single-node
@@ -80,31 +136,30 @@ services:
         limits:
           cpus: '2.0'
           memory: 1G
+    profiles:
+    - search
   rabbitmq:
-    image: ${IMAGE_REPOSITORY:-}rabbitmq:3.12-management
-    container_name: ecommerce-mq
+    image: ${IMAGE_REPOSITORY:-}rabbitmq:3-alpine
     restart: always
     ports:
-    - 5672:5672
-    - 15672:15672
+    - ${RABBITMQ_PORT:-5672}:5672
     volumes:
-    - ./data/rabbitmq:/var/lib/rabbitmq
+    - rabbitmq_data:/var/lib/rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${APP_RABBITMQ_USER:-ecommerce}
+      RABBITMQ_DEFAULT_PASS: ${APP_RABBITMQ_PASSWORD:?Set APP_RABBITMQ_PASSWORD}
     healthcheck:
       test:
-      - CMD
-      - rabbitmq-diagnostics
-      - check_running
-      interval: 5s
+      - CMD-SHELL
+      - rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_port_listener
+        5672
+      interval: 3s
       timeout: 5s
-      retries: 5
+      retries: 20
     networks:
     - monitor_net
   prometheus:
     image: ${IMAGE_REPOSITORY:-}prom/prometheus:v3.9.1
-    container_name: prometheus
     restart: always
     ports:
     - 9090:9090
@@ -115,9 +170,10 @@ services:
     - --web.enable-otlp-receiver
     networks:
     - monitor_net
+    profiles:
+    - observability
   tempo:
     image: ${IMAGE_REPOSITORY:-}grafana/tempo:2.10.0
-    container_name: tempo
     restart: always
     command:
     - -config.file=/etc/tempo.yaml
@@ -129,9 +185,10 @@ services:
     - 3200:3200
     networks:
     - monitor_net
+    profiles:
+    - observability
   loki:
     image: ${IMAGE_REPOSITORY:-}grafana/loki:3.6.4
-    container_name: loki
     restart: always
     ports:
     - 3100:3100
@@ -141,9 +198,10 @@ services:
     command: -config.file=/etc/loki/local-config.yaml
     networks:
     - monitor_net
+    profiles:
+    - observability
   promtail:
     image: ${IMAGE_REPOSITORY:-}grafana/promtail:3.6.4
-    container_name: promtail
     restart: always
     volumes:
     - ./logs:/var/log
@@ -152,9 +210,10 @@ services:
     command: -config.file=/etc/promtail/config.yaml
     networks:
     - monitor_net
+    profiles:
+    - observability
   grafana:
     image: ${IMAGE_REPOSITORY:-}grafana/grafana:12.3.2
-    container_name: grafana
     restart: always
     ports:
     - 3000:3000
@@ -165,8 +224,13 @@ services:
     - ./data/grafana:/var/lib/grafana
     networks:
     - monitor_net
+    profiles:
+    - observability
 networks:
   monitor_net:
     driver: bridge
 volumes:
-  es_data: null
+  postgres_data: {}
+  redis_data: {}
+  rabbitmq_data: {}
+  es_data: {}
