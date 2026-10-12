@@ -4,78 +4,52 @@ metadata:
   name: ecommerce-config
   namespace: ecommerce
 data:
-  config.yaml: |
-    app:
-      name: "ecommerce-api"
-      port: 8080
-      gin_mode: release
-      ssl: false
-      ssl_crt_path: ""
-      ssl_key_path: ""
-      # 两个排查用的开关，集群里保持关闭：
-      # 配置诊断始终脱敏；devMsg 仅在明确启用时返回
-      print_config: false
-      expose_dev_msg: false
-
-    database:
-      host: "postgres"
-      port: 5432
-      user: "postgres"
-      password: ""
-      db_name: "ecommerce"
-      ssl_mode: "disable"
-      max_idle_conns: 20
-      max_open_conns: 50
-      conn_max_lifetime: 10
-      time_zone: "Asia/Shanghai"
-      log_level: "info"
-      # schema 变更走 migrations/，不靠启动时自动建表
-      auto_migrate: false
-
-    redis:
-      host: "redis"
-      port: 6379
-      password: ""
-      db: 0
-      pool_size: 10
-
-    rabbitmq:
-      host: "rabbitmq"
-      port: 5672
-      user: "ecommerce"
-      password: ""
-
-    registry:
-      prefix: ""
-
-    log:
-      console_level: "info"
-      file_level: ""
-      filename: ""
-      max_size: 100
-      max_backups: 3
-      max_age: 28
-
-    auth:
-      access_token_expire: 15m
-      refresh_token_expire: 168h
-      token_secret: ""
-
-    otel:
-      enabled: false
-      endpoint:
-        trace_endpoint: "tempo:4317"
-        metric_endpoint: "prometheus:9090"
-      service_name: "e-commerce"
-
-    elasticsearch:
-      enabled: false
-      host: "elasticsearch"
-      port: 9200
-
-    order_mq:
-      exchange: "dlx_exchange"
-      consumer_queue: "order_timeout_queue"
-      delay_queue: "order_delay_queue"
-      routing_key: "timeout"
-      ttl_ms: 30000
+  # envFrom maps these names directly into the application container.
+  # Ordinary settings use APP_<SECTION>_<FIELD>; secrets are injected separately.
+  APP_APP_NAME: "ecommerce-api"
+  APP_APP_PORT: "8080"
+  APP_APP_GIN_MODE: "release"
+  APP_APP_SSL: "false"
+  APP_APP_SSL_CRT_PATH: ""
+  APP_APP_SSL_KEY_PATH: ""
+  APP_APP_PRINT_CONFIG: "false"
+  APP_APP_EXPOSE_DEV_MSG: "false"
+  APP_DATABASE_HOST: "postgres"
+  APP_DATABASE_PORT: "5432"
+  APP_DATABASE_USER: "postgres"
+  APP_DATABASE_DB_NAME: "ecommerce"
+  APP_DATABASE_SSL_MODE: "disable"
+  APP_DATABASE_MAX_IDLE_CONNS: "20"
+  APP_DATABASE_MAX_OPEN_CONNS: "50"
+  APP_DATABASE_CONN_MAX_LIFETIME: "10"
+  APP_DATABASE_TIME_ZONE: "Asia/Shanghai"
+  APP_DATABASE_LOG_LEVEL: "info"
+  APP_DATABASE_AUTO_MIGRATE: "false"
+  APP_REDIS_HOST: "redis"
+  APP_REDIS_PORT: "6379"
+  APP_REDIS_DB: "0"
+  APP_REDIS_POOL_SIZE: "10"
+  APP_RABBITMQ_HOST: "rabbitmq"
+  APP_RABBITMQ_PORT: "5672"
+  APP_RABBITMQ_USER: "ecommerce"
+  APP_REGISTRY_PREFIX: ""
+  APP_LOG_CONSOLE_LEVEL: "info"
+  APP_LOG_FILE_LEVEL: ""
+  APP_LOG_FILENAME: ""
+  APP_LOG_MAX_SIZE: "100"
+  APP_LOG_MAX_BACKUPS: "3"
+  APP_LOG_MAX_AGE: "28"
+  APP_AUTH_ACCESS_TOKEN_EXPIRE: "15m"
+  APP_AUTH_REFRESH_TOKEN_EXPIRE: "168h"
+  APP_OTEL_ENABLED: "false"
+  APP_OTEL_ENDPOINT_TRACE_ENDPOINT: "tempo:4317"
+  APP_OTEL_ENDPOINT_METRIC_ENDPOINT: "prometheus:9090"
+  APP_OTEL_SERVICE_NAME: "e-commerce"
+  APP_ELASTICSEARCH_ENABLED: "false"
+  APP_ELASTICSEARCH_HOST: "elasticsearch"
+  APP_ELASTICSEARCH_PORT: "9200"
+  APP_ORDER_MQ_EXCHANGE: "dlx_exchange"
+  APP_ORDER_MQ_CONSUMER_QUEUE: "order_timeout_queue"
+  APP_ORDER_MQ_DELAY_QUEUE: "order_delay_queue"
+  APP_ORDER_MQ_ROUTING_KEY: "timeout"
+  APP_ORDER_MQ_TTL_MS: "30000"

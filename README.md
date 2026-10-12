@@ -34,6 +34,7 @@ API： http://localhost:10000
 配置来源优先级：进程环境变量 > 显式 dotenv > YAML > 默认值。
 -c / CONFIG_PATH 指定 YAML；-dotenv / DOTENV_PATH 显式指定 dotenv。
 APP_ 环境变量可覆盖所有配置字段，包括 YAML 未出现的字段。
+Docker Compose 使用 YAML 配置文件；Kubernetes 用 ConfigMap 注入普通 APP_* 环境变量、Secret 注入敏感值，不挂载应用配置文件。
 密码与 JWT Secret 没有代码默认值；错误或未知配置会阻止启动。
 
 配置项、两种部署方式和兼容说明见 [配置与部署](docs/configuration.md)。

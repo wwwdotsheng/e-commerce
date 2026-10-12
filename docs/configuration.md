@@ -86,14 +86,22 @@ go run ./cmd -c configs/config.yaml -dotenv .env
 
 ## Kubernetes
 
-k8s/app/configmap.yaml 使用同一配置结构。
-连接地址和普通参数来自 ConfigMap，密码与签名密钥由现有 Secret 注入，
-无 app.env，也不会挂载 .env。
-新 ConfigMap 增加 app.gin_mode、elasticsearch.enabled 的明确配置。
+Docker Compose 使用 configs/config.yaml；Kubernetes 不挂载或读取应用 YAML 配置文件。
+k8s/app/configmap.yaml 将普通配置逐项写成 APP_* 键，Deployment 通过 envFrom 注入。
+敏感密码和 JWT 签名密钥继续从 Secret 引用，映射为 APP_DATABASE_PASSWORD、
+APP_REDIS_PASSWORD、APP_RABBITMQ_PASSWORD、APP_AUTH_TOKEN_SECRET。
 
-ConfigMap 使用 subPath 挂载，不会自动更新运行中进程；调整配置后需要重建 Pod。
+例如 app.gin_mode 对应 APP_APP_GIN_MODE，database.host 对应
+APP_DATABASE_HOST。Secret 内部 key 可以继续使用 POSTGRES_PASSWORD 等名称；
+Deployment 的 env.name 才是应用读取的 APP_* 环境变量名。
+
+Deployment 显式设置 CONFIG_PATH 为空，表示只读取环境变量。CONFIG_PATH 未设置时，
+直接运行和 Docker 仍可使用默认 configs/config.yaml。Kubernetes 的 env-only 启动仍
+使用相同默认值、类型转换和 Validate()；必填凭据由 Secret 提供。
+
+ConfigMap 通过 envFrom 注入。变更 ConfigMap 后需重建 Pod，环境变量不会在运行时更新。
 自动发布流水线只更新 API 镜像，不自动修改依赖、ConfigMap 或 Secret。
-先审核/应用配置变更，再发布应用；手工操作前核对镜像标签避免覆盖 CI 版本。
+先审核并应用配置变更，再发布应用；手工操作前核对镜像标签避免覆盖 CI 版本。
 
 ## 验证
 

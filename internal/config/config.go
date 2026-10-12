@@ -145,8 +145,8 @@ func Defaults() AppConfig {
 }
 
 func Init() (*AppConfig, error) {
-	path := os.Getenv("CONFIG_PATH")
-	explicit := path != ""
+	// An explicitly empty CONFIG_PATH selects environment-only configuration.
+	path, explicit := os.LookupEnv("CONFIG_PATH")
 	if !explicit {
 		path = filepath.Join("configs", "config.yaml")
 	}

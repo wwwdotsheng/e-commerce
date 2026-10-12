@@ -23,13 +23,14 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # Kubernetes receives individual settings from ConfigMap and Secret.
+          # An explicitly empty CONFIG_PATH selects ENV-only configuration.
+          envFrom:
+            - configMapRef:
+                name: ecommerce-config
           env:
             - name: CONFIG_PATH
-              value: /app/configs/config.yaml
-            # gin 的运行模式由它决定（代码里不再 SetMode）。
-            # 不设就是 debug：会打一堆警告，还有额外的运行时开销。
-            - name: GIN_MODE
-              value: release
+              value: ""
             - name: APP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -50,11 +51,6 @@ spec:
                 secretKeyRef:
                   name: ecommerce-app-secret
                   key: AUTH_TOKEN_SECRET
-          volumeMounts:
-            - name: app-config
-              mountPath: /app/configs/config.yaml
-              subPath: config.yaml
-              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -84,7 +80,3 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-      volumes:
-        - name: app-config
-          configMap:
-            name: ecommerce-config
