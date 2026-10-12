@@ -17,45 +17,26 @@
 
 ## 快速开始
 
-依赖：Go 1.25+、Docker / Docker Compose。
+使用 Docker Compose（核心栈：API、PostgreSQL、Redis、RabbitMQ）：
 
-```bash
-# 启动基础设施（PostgreSQL / Redis / RabbitMQ / Elasticsearch 及监控栈）
-docker compose up -d
+1. 复制 .env.example 为 .env，替换 JWT 签名密钥并填写依赖密码。
+2. 新数据库显式设置 APP_DATABASE_AUTO_MIGRATE=true。
+3. 执行 docker compose up -d --build --wait。
 
-# 启动服务
-go run cmd/main.go -c configs/config.yaml
-```
+API： http://localhost:10000
+健康/就绪： /health、/ready
+接口文档： /swagger
 
-服务默认监听 `:8080`。
-
-```bash
-curl http://localhost:8080/health    # 健康检查
-curl http://localhost:8080/ready     # 就绪检查
-```
-
-接口文档：`http://localhost:8080/swagger`
+可选搜索、监控和热重载按功能启用。应用不区分 Dev/Prod/Test 环境名称。
 
 ## 配置
 
-配置位于 `configs/config.yaml`。所有配置项均可通过环境变量覆盖，前缀 `APP_`，层级用 `_` 分隔：
+配置来源优先级：进程环境变量 > 显式 dotenv > YAML > 默认值。
+-c / CONFIG_PATH 指定 YAML；-dotenv / DOTENV_PATH 显式指定 dotenv。
+APP_ 环境变量可覆盖所有配置字段，包括 YAML 未出现的字段。
+密码与 JWT Secret 没有代码默认值；错误或未知配置会阻止启动。
 
-```bash
-APP_DATABASE_HOST=127.0.0.1 APP_AUTH_TOKEN_SECRET=change-me go run cmd/main.go -c configs/config.yaml
-```
-
-| 配置段 | 说明 |
-|---|---|
-| `app` | 服务名、监听端口、运行环境 |
-| `database` | PostgreSQL 连接与连接池 |
-| `redis` | Redis 连接与连接池 |
-| `rabbitmq` | RabbitMQ 连接 |
-| `elasticsearch` | Elasticsearch 地址 |
-| `auth` | JWT 有效期与签名密钥 |
-| `order_mq` | 订单超时队列、交换机、TTL |
-| `otel` | OpenTelemetry 开关与上报端点 |
-| `registry` | 镜像仓库前缀 |
-| `log` | 日志级别与轮转策略 |
+配置项、两种部署方式和兼容说明见 [配置与部署](docs/configuration.md)。
 
 ## 项目结构
 

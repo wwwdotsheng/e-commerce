@@ -11,6 +11,6 @@ main
 # 本地真值（secret.local.yaml）不提交。
 # 见 k8s/README-secrets.md
 k8s/**/secret.local.yaml
-# 防御性：本地开发可能用 .env（godotenv.Load() 会读它）
+# Compose 插值及显式 DOTENV_PATH 使用的本地凭据文件
 .env
 k8s/**/*-secret.env
