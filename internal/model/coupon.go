@@ -46,6 +46,11 @@ type CouponTemplate struct {
 	DeletedAt      gorm.DeletedAt `gorm:"index"`
 }
 
+	// 表名是单数 —— GORM 的复数化会推导成 coupon_templates，与迁移建的表不一致。
+func (CouponTemplate) TableName() string {
+	return "coupon_template"
+}
+
 func (t *CouponTemplate) BeforeCreate(tx *gorm.DB) error {
 	if t.ID == uuid.Nil {
 		id, err := uuid.NewV7()
@@ -83,6 +88,11 @@ type UserCoupon struct {
 
 	// Preload 用
 	Template *CouponTemplate `gorm:"foreignKey:TemplateID;references:ID"`
+}
+
+	// 表名是单数 —— GORM 的复数化会推导成 user_coupons，与迁移建的表不一致。
+func (UserCoupon) TableName() string {
+	return "user_coupon"
 }
 
 func (uc *UserCoupon) BeforeCreate(tx *gorm.DB) error {

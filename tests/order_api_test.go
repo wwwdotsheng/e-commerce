@@ -37,11 +37,11 @@ type listOrdersResponse struct {
 
 var _ = Describe("OrderApi", Ordered, func() {
 	var (
-		publisherID      uuid.UUID
-		buyerID          uuid.UUID
-		productID        uuid.UUID
-		lowStockProduct  = uuid.New()
-		accessToken      string
+		publisherID     uuid.UUID
+		buyerID         uuid.UUID
+		productID       uuid.UUID
+		lowStockProduct = uuid.New()
+		accessToken     string
 	)
 
 	var doLogin = func(email, password string) string {
@@ -162,7 +162,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 			}, errno.ErrInvalidParam),
 		)
 
-		It("幂等键重复返回冲突", func() {
+		It("幂等键重复返回成功且不重复创建", func() {
 			key := fmt.Sprintf("dup-key-%d", time.Now().UnixNano())
 			_, resp1 := doCreateOrder(accessToken, map[string]interface{}{
 				"product_id":      productID.String(),
@@ -182,7 +182,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 
 	Describe("GET /api/v1/order/list", func() {
 		It("返回用户订单列表", func() {
-				testDB.Exec("DELETE FROM orders WHERE user_id = ?", buyerID)
+			testDB.Exec("DELETE FROM orders WHERE user_id = ?", buyerID)
 			for i := 0; i < 3; i++ {
 				key := fmt.Sprintf("list-data-%d-%d", i, time.Now().UnixNano())
 				doCreateOrder(accessToken, map[string]interface{}{
@@ -193,7 +193,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 			}
 
 			_, resp := doListOrders(accessToken, map[string]string{
-				"page_num": "1",
+				"page_num":  "1",
 				"page_size": "2",
 			})
 			Expect(resp.Code).To(Equal(errno.OK.FullCode()))
@@ -205,7 +205,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 			Expect(listResp.Orders[0].SnapshotTitle).To(Equal("Test Item"))
 
 			_, resp2 := doListOrders(accessToken, map[string]string{
-				"page_num": "2",
+				"page_num":  "2",
 				"page_size": "2",
 			})
 			Expect(resp2.Code).To(Equal(errno.OK.FullCode()))

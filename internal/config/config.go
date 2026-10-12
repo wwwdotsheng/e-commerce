@@ -12,22 +12,16 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	EnvDev  = "DEV"
-	EnvTest = "TEST"
-	EnvProd = "PROD"
-)
-
 type AppConfig struct {
-	App        AppSection        `mapstructure:"app"`
-	Database   DatabaseSection   `mapstructure:"database"`
-	Redis      RedisSection      `mapstructure:"redis"`
-	RabbitMQ   RabbitMQSection   `mapstructure:"rabbitmq"`
-	Registry   RegistrySection   `mapstructure:"registry"`
-	Log        LogSection        `mapstructure:"log"`
-	Auth       AuthSection       `mapstructure:"auth"`
-	Otel       OtelSection       `mapstructure:"otel"`
-	TestImages TestImagesSection `mapstructure:"test_images"`
+	App           AppSection           `mapstructure:"app"`
+	Database      DatabaseSection      `mapstructure:"database"`
+	Redis         RedisSection         `mapstructure:"redis"`
+	RabbitMQ      RabbitMQSection      `mapstructure:"rabbitmq"`
+	Registry      RegistrySection      `mapstructure:"registry"`
+	Log           LogSection           `mapstructure:"log"`
+	Auth          AuthSection          `mapstructure:"auth"`
+	Otel          OtelSection          `mapstructure:"otel"`
+	TestImages    TestImagesSection    `mapstructure:"test_images"`
 	Elasticsearch ElasticsearchSection `mapstructure:"elasticsearch"`
 	OrderMQ       OrderMQConfig        `mapstructure:"order_mq"`
 }
@@ -35,10 +29,18 @@ type AppConfig struct {
 type AppSection struct {
 	Name       string `mapstructure:"name"`
 	Port       int    `mapstructure:"port"`
-	Env        string `mapstructure:"env"`
 	SSL        bool   `mapstructure:"ssl"`
 	SSLCrtPath string `mapstructure:"ssl_crt_path"`
 	SSLKeyPath string `mapstructure:"ssl_key_path"`
+
+	// 下面两个是显式开关，默认值都取「安全的那一侧」：
+	// 想让它们变成 true，用环境变量显式覆盖（APP_APP_PRINT_CONFIG / APP_APP_EXPOSE_DEV_MSG）。
+	//
+	// 之前这里靠 app.env 是不是 "prod" 来决定行为，问题有两个：
+	//   1. 部署时忘了改 env，行为就悄悄变了（比如 AutoMigrate 跑去生产库建表）
+	//   2. 读代码时看不出「这次部署到底会怎样」，得先去查 env
+	PrintConfig  bool `mapstructure:"print_config"`
+	ExposeDevMsg bool `mapstructure:"expose_dev_msg"`
 }
 
 type DatabaseSection struct {
@@ -53,6 +55,10 @@ type DatabaseSection struct {
 	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"`
 	TimeZone        string `mapstructure:"time_zone"`
 	LogLevel        string `mapstructure:"log_level"`
+
+	// AutoMigrate 默认 false —— 生产环境的 schema 变更走 migrations/，
+	// 不该由应用启动时自动建表。本地开发用 APP_DATABASE_AUTO_MIGRATE=true 打开。
+	AutoMigrate bool `mapstructure:"auto_migrate"`
 }
 
 type RedisSection struct {
@@ -123,8 +129,6 @@ func Init() (*AppConfig, error) {
 
 	v := viper.New()
 
-	v.SetDefault("APP_ENV", EnvProd)
-
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
@@ -152,14 +156,6 @@ func Init() (*AppConfig, error) {
 }
 
 func (c *AppConfig) Validate() error {
-	switch strings.ToUpper(c.App.Env) {
-	case EnvDev, EnvTest, EnvProd:
-	case "":
-		return errors.New("app.env 不能为空")
-	default:
-		return fmt.Errorf("无效的环境配置: %s, 必须是 DEV/TEST/PROD 之一", c.App.Env)
-	}
-
 	if c.Database.Host == "" {
 		return errors.New("database.host required (ENV: APP_DATABASE_HOST)")
 	}
@@ -172,17 +168,17 @@ func (c *AppConfig) Validate() error {
 	if c.RabbitMQ.Password == "" {
 		return errors.New("rabbitmq.password required (ENV: APP_RABBITMQ_PASSWORD)")
 	}
-	if c.IsProd() && (c.Auth.TokenSecret == "" || c.Auth.TokenSecret == "12345678") {
-		return errors.New("auth.token_secret must be a strong, non-default value in production (ENV: APP_AUTH_TOKEN_SECRET)")
+
+	// 这一条不再看 app.env —— 不管是哪个环境，空密钥和示例密钥都是错的。
+	// 本地开发的值放到 .env 里（config.Init 会 godotenv.Load()）。
+	if c.Auth.TokenSecret == "" {
+		return errors.New("auth.token_secret 不能为空 (ENV: APP_AUTH_TOKEN_SECRET)")
+	}
+	if c.Auth.TokenSecret == "12345678" || strings.Contains(c.Auth.TokenSecret, "replace-with") {
+		return errors.New("auth.token_secret 不能使用示例值 (ENV: APP_AUTH_TOKEN_SECRET)")
 	}
 	return nil
 }
-
-// ===== 环境判断 =====
-
-func (c *AppConfig) IsDev() bool  { return strings.ToUpper(c.App.Env) == EnvDev }
-func (c *AppConfig) IsTest() bool { return strings.ToUpper(c.App.Env) == EnvTest }
-func (c *AppConfig) IsProd() bool { return strings.ToUpper(c.App.Env) == EnvProd }
 
 // ImageRef 拼接 registry 前缀与镜像名
 func (c *AppConfig) ImageRef(image string) string {

@@ -34,7 +34,9 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 		cancel()
 		return ctx, nil, nil, fmt.Errorf("加载配置失败：%w", err)
 	}
-	if !conf.IsProd() {
+	// 打印完整配置会把 PostgreSQL/Redis/RabbitMQ 密码和 JWT 密钥打进日志，
+	// 所以默认关闭。要排查配置问题时用 APP_APP_PRINT_CONFIG=true 临时打开。
+	if conf.App.PrintConfig {
 		data, err := json.MarshalIndent(conf, "", "  ")
 		if err != nil {
 			cancel()
@@ -84,13 +86,12 @@ func SetupRouter(
 	logger *zap.Logger,
 	mp *metric.MeterProvider,
 ) (*gin.Engine, error) {
-	var r *gin.Engine
-	if conf.IsDev() {
-		r = gin.Default()
-	} else {
-		gin.SetMode(gin.ReleaseMode)
-		r = gin.New()
-	}
+	// 引擎固定用 gin.New()，Recovery 显式挂上 —— 之前 dev 用 gin.Default()、
+	// 其他环境用 gin.New()，结果非 dev 环境反而没有 Recovery。
+	// 请求日志由项目自己的 middleware 负责，不用 gin.Logger()。
+	// gin 的运行模式交给 GIN_MODE 环境变量（部署时设 release），不在代码里分支。
+	r := gin.New()
+	r.Use(gin.Recovery())
 	err := r.SetTrustedProxies([]string{})
 	if err != nil {
 		return nil, err
@@ -184,7 +185,10 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("数据库初始化失败: %w", err)
 	}
 
-	if !config.IsProd() {
+	// schema 变更走 migrations/，不靠应用启动时自动建表。
+	// 之前这里是 if !config.IsProd()，生产跳过 —— 而 migrations/ 当时并不存在，
+	// 于是生产库的 schema 一直落后于代码（就是那次「缺列缺表」的根因）。
+	if config.Database.AutoMigrate {
 		if err := db.AutoMigrate(
 			&model.User{},
 			&model.UserWallet{},

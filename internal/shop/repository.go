@@ -2,7 +2,10 @@ package shop
 
 import (
 	"context"
+	"errors"
+
 	"e-commerce/internal/model"
+	"e-commerce/pkg/errno"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -23,6 +26,10 @@ func (r *Repository) Create(ctx context.Context, s *model.Shop) error {
 func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*model.Shop, error) {
 	var s model.Shop
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 转成带 errno 类型的错误，否则 response.Write 会把它当成系统故障（B01001）
+		return nil, errno.ErrNotFoundRecord
+	}
 	if err != nil {
 		return nil, err
 	}

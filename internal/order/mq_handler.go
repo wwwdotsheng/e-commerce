@@ -4,22 +4,27 @@ import (
 	"context"
 	"e-commerce/pkg/clog"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 )
 
-const maxRetryHeader = "x-retry-count"
 const maxRetries = 3
 
+type timeoutProcessor interface {
+	HandleOrderTimeout(context.Context, uuid.UUID) error
+}
 type MqHandler struct {
-	svc *Service
+	svc        timeoutProcessor
+	retryDelay time.Duration
 }
 
-func NewMqHandler(svc *Service) *MqHandler {
+func NewMqHandler(svc timeoutProcessor) *MqHandler {
 	return &MqHandler{
-		svc: svc,
+		svc:        svc,
+		retryDelay: 100 * time.Millisecond,
 	}
 }
 
@@ -74,55 +79,38 @@ func (h *MqHandler) handleSingleMessage(ctx context.Context, d amqp.Delivery) {
 		return
 	}
 
-	logger.Info("Received a message: " + orderID.String())
-	err = h.svc.HandleOrderTimeout(ctx, orderID)
-
-	if err != nil {
-		retryCount := getRetryCount(d.Headers)
-		if retryCount >= maxRetries {
-			logger.Error("订单超时处理达到最大重试次数，丢弃消息",
-				zap.String("order_id", orderID.String()),
-				zap.Int("retry_count", retryCount),
-				zap.Error(err),
-			)
-			_ = d.Reject(false) // 不重新入队
+	// Bound retries within one delivery rather than mutating local headers:
+	// basic.nack does not publish modified headers back to RabbitMQ.
+	// A process restart can redeliver it; business handling must stay idempotent.
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if ctx.Err() != nil {
+			_ = d.Nack(false, true)
 			return
 		}
-		logger.Warn("订单超时处理失败，将重新入队",
-			zap.String("order_id", orderID.String()),
-			zap.Int("retry_count", retryCount),
-			zap.Error(err),
-		)
-		// 更新重试计数并重新入队
-		if d.Headers == nil {
-			d.Headers = amqp.Table{}
+		err = h.svc.HandleOrderTimeout(ctx, orderID)
+		if err == nil {
+			if ackErr := d.Ack(false); ackErr != nil {
+				logger.Error("ack timeout delivery failed", zap.Error(ackErr))
+			}
+			return
 		}
-		d.Headers[maxRetryHeader] = retryCount + 1
-		_ = d.Nack(false, true)
-		return
-	}
-
-	_ = d.Ack(false)
-}
-
-func getRetryCount(headers amqp.Table) int {
-	if headers == nil {
-		return 0
-	}
-	v, ok := headers[maxRetryHeader]
-	if !ok {
-		return 0
-	}
-	switch val := v.(type) {
-	case int:
-		return val
-	case int32:
-		return int(val)
-	case int64:
-		return int(val)
-	case float64:
-		return int(val)
-	default:
-		return 0
+		if ctx.Err() != nil {
+			_ = d.Nack(false, true)
+			return
+		}
+		if attempt == maxRetries {
+			logger.Error("timeout delivery exhausted retries", zap.String("order_id", orderID.String()), zap.Int("retries", maxRetries), zap.Error(err))
+			_ = d.Reject(false)
+			return
+		}
+		logger.Warn("retry timeout delivery", zap.String("order_id", orderID.String()), zap.Int("retry", attempt+1), zap.Error(err))
+		timer := time.NewTimer(h.retryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			_ = d.Nack(false, true)
+			return
+		case <-timer.C:
+		}
 	}
 }

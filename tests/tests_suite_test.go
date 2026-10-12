@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/app"
 	"e-commerce/internal/auth"
+	"e-commerce/internal/config"
 	"e-commerce/internal/coupon"
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
@@ -16,6 +17,7 @@ import (
 	"e-commerce/pkg/mq"
 	"e-commerce/pkg/redis"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -62,11 +64,23 @@ var (
 )
 
 var logger *zap.Logger
+var testOrderService *order.Service
+var testOrderMQConfig config.OrderMQConfig
+var testRabbitMQURL string
 
 var _ = BeforeSuite(func() {
 	if os.Getenv("CONFIG_PATH") == "" {
 		os.Setenv("CONFIG_PATH", "../configs/config.yaml")
-		os.Setenv("APP_APP_ENV", "test")
+	}
+
+	// 这两个开关测试必须显式给（配置文件里没有默认值）：
+	//   AUTO_MIGRATE  测试库的表由 AutoMigrate 建，不走 migrations/
+	//   TOKEN_SECRET  config.Validate() 会拒绝空值和示例值
+	if os.Getenv("APP_DATABASE_AUTO_MIGRATE") == "" {
+		os.Setenv("APP_DATABASE_AUTO_MIGRATE", "true")
+	}
+	if os.Getenv("APP_AUTH_TOKEN_SECRET") == "" {
+		os.Setenv("APP_AUTH_TOKEN_SECRET", "test-only-token-secret")
 	}
 
 	ctx, stop, config, err := app.Bootstrap()
@@ -74,7 +88,7 @@ var _ = BeforeSuite(func() {
 		log.Fatalf("应用启动失败：%v", err)
 	}
 
-	defer stop()
+	appStopFunc = stop
 
 	// --- PostgreSQL ---
 	pgContainer, err = postgres.Run(
@@ -152,6 +166,7 @@ var _ = BeforeSuite(func() {
 
 	config.RabbitMQ.Host = rmqHost
 	config.RabbitMQ.Port = rmqPort.Int()
+	testRabbitMQURL = fmt.Sprintf("amqp://%s:%s@%s:%d/", config.RabbitMQ.User, config.RabbitMQ.Password, rmqHost, rmqPort.Int())
 
 	// 路由初始化 ======================================================
 	logger = clog.L(ctx)
@@ -177,6 +192,9 @@ var _ = BeforeSuite(func() {
 		&model.Product{},
 		&model.Order{},
 		&model.StockChangeLog{},
+		&model.CouponTemplate{},
+		&model.UserCoupon{},
+		&model.Shop{},
 	); err != nil {
 		logger.Fatal("数据库AutoMigrate失败")
 	}
@@ -237,6 +255,8 @@ var _ = BeforeSuite(func() {
 	shopRepo := shop.NewRepository(testDB)
 	shopH := shop.NewHandler(shop.NewService(shopRepo))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
+	testOrderService = orderSvc
+	testOrderMQConfig = config.OrderMQ
 
 	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
 	if err != nil {

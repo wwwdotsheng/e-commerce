@@ -41,6 +41,22 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 	}()
 
 	var order *model.Order
+	replay := false
+	orderID, idErr := uuid.NewV7()
+	if idErr != nil {
+		return idErr
+	}
+	matches := func(existing *model.Order) error {
+		couponID := uuid.Nil
+		if existing.UserCouponID != nil {
+			couponID = *existing.UserCouponID
+		}
+		if existing.UserID != userID || existing.ProductId != param.ProductID ||
+			existing.Quantity != param.Quantity || couponID != param.UserCouponID {
+			return errno.ErrInvalidParam.WithRaw(errors.New("idempotency key reused with a different account or payload"))
+		}
+		return nil
+	}
 
 	err = database.ExecuteTransaction(ctx, svc.db, func(ctx context.Context) error {
 		p, err := svc.productRepo.GetProductByID(ctx, param.ProductID, database.LockUpdate)
@@ -51,6 +67,16 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			return errno.ErrOrderProductIdNotFound.WithRaw(
 				fmt.Errorf("get product by id: %s, error: %w", param.ProductID, err),
 			)
+		}
+
+		// Product locking serializes replays before inventory/coupon validation.
+		existing, lookupErr := svc.repo.FindByIdempotencyKey(ctx, param.IdempotencyKey)
+		if lookupErr == nil {
+			replay = true
+			return matches(existing)
+		}
+		if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return lookupErr
 		}
 
 		if err := svc.productRepo.DeductStock(ctx, param.ProductID, param.Quantity); err != nil {
@@ -85,7 +111,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 
 			discountAmount = calcCouponDeduction(template, orderAmount)
 
-			if err := svc.couponRepo.UseCouponWithVersion(ctx, uc.ID, userID, param.UserCouponID, uc.Version); err != nil {
+			if err := svc.couponRepo.UseCouponWithVersion(ctx, uc.ID, userID, orderID, uc.Version); err != nil {
 				return err
 			}
 
@@ -94,6 +120,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 		}
 
 		order = &model.Order{
+			ID:             orderID,
 			UserID:         userID,
 			ProductId:      param.ProductID,
 			Quantity:       param.Quantity,
@@ -108,7 +135,11 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 	})
 	if err != nil {
 		if errors.Is(err, repoErrOrderIdempotencyConflict) {
-			return nil
+			existing, lookupErr := svc.repo.FindByIdempotencyKey(ctx, param.IdempotencyKey)
+			if lookupErr != nil {
+				return lookupErr
+			}
+			return matches(existing)
 		}
 		switch {
 		case errors.Is(err, errno.ErrOrderProductIdNotFound):
@@ -124,6 +155,9 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 		return err
 	}
 
+	if replay {
+		return nil
+	}
 	if err := svc.repo.PublishTimeoutMessage(ctx, order.ID); err != nil {
 		clog.L(ctx).Error("发送订单超时消息失败",
 			zap.String("order_id", order.ID.String()),
@@ -160,22 +194,25 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 		}
 	}()
 
-	order, err := svc.repo.HandleOrderTimeout(ctx, orderID)
-	if err != nil {
-		return err
-	}
-
-	if order.UserCouponID != nil {
-		if err := svc.couponRepo.ReturnCoupon(ctx, *order.UserCouponID); err != nil {
-			clog.L(ctx).Error("退还优惠券失败",
-				zap.String("order_id", orderID.String()),
-				zap.String("coupon_id", order.UserCouponID.String()),
-				zap.Error(err),
-			)
+	// Closing, inventory restoration and coupon return must commit together.
+	return database.ExecuteTransaction(ctx, svc.db, func(txCtx context.Context) error {
+		o, err := svc.repo.HandleOrderTimeout(txCtx, orderID)
+		if err != nil {
+			return err
 		}
-	}
-
-	return nil
+		if o == nil {
+			return nil
+		}
+		if err := svc.productRepo.RestoreOrderStock(txCtx, o.ProductId, o.Quantity); err != nil {
+			return err
+		}
+		if o.UserCouponID != nil {
+			if err := svc.couponRepo.ReturnCouponForOrder(txCtx, *o.UserCouponID, o.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (svc *Service) ListOrders(ctx context.Context, param ListOrdersParam) ([]*model.Order, int64, error) {

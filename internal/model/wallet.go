@@ -18,6 +18,10 @@ type UserWallet struct {
 	UpdatedAt time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
+func (UserWallet) TableName() string {
+	return "user_wallets"
+}
+
 type WalletLog struct {
 	ID             uuid.UUID `gorm:"column:id;primaryKey;type:uuid"`
 	UserID         uuid.UUID `gorm:"column:user_id;type:uuid;not null"`
@@ -26,6 +30,10 @@ type WalletLog struct {
 	Type           string    `gorm:"column:type;type:varchar(20);not null;"`
 	IdempotencyKey string    `gorm:"column:idempotency_key;uniqueIndex:uni_wallet_log_idempotency_key;type:varchar(64);not null;"`
 	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime"`
+}
+
+func (WalletLog) TableName() string {
+	return "wallet_logs"
 }
 
 func (wl *WalletLog) BeforeCreate(tx *gorm.DB) (err error) {

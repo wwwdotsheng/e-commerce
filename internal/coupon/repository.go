@@ -157,3 +157,24 @@ func (r *Repository) ReturnCoupon(ctx context.Context, userCouponID uuid.UUID) e
 	// 退券可能 RowsAffected == 0（券已被其他操作改变），不是硬错误
 	return nil
 }
+
+// ReturnCouponForOrder prevents an old delivery from returning a coupon that
+// has since been used by another order. It participates in the caller's transaction.
+func (r *Repository) ReturnCouponForOrder(ctx context.Context, couponID, orderID uuid.UUID) error {
+	result := r.GetDB(ctx).Model(&model.UserCoupon{}).
+		Where("id = ? AND status = ? AND used_order_id = ?", couponID, model.UserCouponStatusUsed, orderID).
+		Updates(map[string]interface{}{
+			"status":        model.UserCouponStatusUnused,
+			"used_order_id": nil,
+			"used_at":       nil,
+			"version":       gorm.Expr("version + 1"),
+			"updated_at":    time.Now(),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrCouponAlreadyUsed
+	}
+	return nil
+}

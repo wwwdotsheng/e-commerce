@@ -16,6 +16,10 @@ type Shop struct {
 	UpdatedAt   time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
+func (Shop) TableName() string {
+	return "shops"
+}
+
 func (s *Shop) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {
 		id, err := uuid.NewV7()

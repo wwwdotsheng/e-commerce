@@ -37,17 +37,44 @@ test:
   script:
     - go version
     - go mod download
+    - go vet ./...
+    - go test -race ./internal/order
     - go install github.com/onsi/ginkgo/v2/ginkgo
-    # 注意两个命名坑（viper 前缀是 APP_）：
-    #   app.env        → APP_APP_ENV（不是 APP_ENV）
-    #   registry.prefix→ IMAGE_REPOSITORY（代码里显式 BindEnv）
-    - APP_APP_ENV=test
+    # 环境变量名的规则（viper 前缀是 APP_，点号换成下划线）：
+    #   app.env         → APP_APP_ENV（已废弃，不再用环境名分支）
+    #   database.auto_migrate → APP_DATABASE_AUTO_MIGRATE
+    #   registry.prefix → IMAGE_REPOSITORY（代码里显式 BindEnv）
+    #
+    # 下面两个是测试必须给的：
+    #   AUTO_MIGRATE 测试库的表由 AutoMigrate 建，不走 migrations/
+    #   TOKEN_SECRET config.Validate() 会拒绝空值和示例值
+    - APP_DATABASE_AUTO_MIGRATE=true
+      APP_AUTH_TOKEN_SECRET=ci-only-token-secret
       IMAGE_REPOSITORY="${REGISTRY_PREFIX}"
       APP_OTEL_ENABLED=false
       APP_LOG_CONSOLE_LEVEL=error
       APP_DATABASE_LOG_LEVEL=error
       CONFIG_PATH=../configs/config.yaml
-      "$(go env GOPATH)/bin/ginkgo" -r --race --randomize-all
+      "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --junit-report=integration.xml --output-dir=test-results ./tests
+
+  artifacts:
+    when: always
+    paths:
+      - test-results/
+    reports:
+      junit: test-results/integration.xml
+
+# External HTTP acceptance is opt-in.
+api-acceptance:
+  stage: test
+  image: "${GOLANG_IMAGE}"
+  allow_failure: false
+  rules:
+    - if: '$API_TEST_BASE_URL != ""'
+      when: manual
+    - when: never
+  script:
+    - go test ./tests/acceptance -v -count=1 -timeout=3m
 
 # ─────────────────────────────────────────────────────────────
 # 2. 构建并推送镜像（只在 master / product 上跑）
