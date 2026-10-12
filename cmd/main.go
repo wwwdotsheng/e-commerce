@@ -2,13 +2,28 @@ package main
 
 import (
 	"e-commerce/internal/app"
+	"flag"
 	"fmt"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 )
 
 func main() {
+	configPath := flag.String("c", "", "configuration YAML path (overrides CONFIG_PATH)")
+	dotenvPath := flag.String("dotenv", "", "optional dotenv path (overrides DOTENV_PATH)")
+	flag.Parse()
+	if *configPath != "" {
+		if err := os.Setenv("CONFIG_PATH", *configPath); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if *dotenvPath != "" {
+		if err := os.Setenv("DOTENV_PATH", *dotenvPath); err != nil {
+			log.Fatal(err)
+		}
+	}
 	ctx, stop, conf, err := app.Bootstrap()
 	if err != nil {
 		log.Fatalf("应用启动失败：%v", err)
