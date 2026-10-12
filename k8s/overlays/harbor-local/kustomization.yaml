@@ -19,7 +19,7 @@ patches:
 images:
   - name: e-commerce
     newName: harbor.internal/e-commerce/app
-    newTag: 0.1.1
+    newTag: fde25f7-testfix-20261012
   - name: postgres
     newName: harbor.internal/dockerhub/postgres
     newTag: 15-alpine
