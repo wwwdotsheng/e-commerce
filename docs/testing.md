@@ -87,7 +87,8 @@ MQ 单元测试覆盖首次成功、暂时失败恢复、达到重试上限、�
 ## CI
 
 自动 test job 运行 vet、MQ 单元 race 和集成 race/乱序测试，并保存 JUnit 报告。
-外部验收独立为 api-acceptance 手动 job；只有 API_TEST_BASE_URL 配置后才显示。
+外部验收独立为非阻塞的 api-acceptance 手动 job；只有 API_TEST_BASE_URL 配置后才显示。
+手动任务失败仍保留失败结果，但不作为自动测试/构建流水线的通过门槛。
 API_TEST_HOST 用于指定 Ingress Host；完整业务链路还需要 API_TEST_ALLOW_WRITES=1。
 自动集成 job 只运行 tests 包，不递归执行外部验收包。
 
@@ -118,3 +119,16 @@ API_TEST_HOST 用于指定 Ingress Host；完整业务链路还需要 API_TEST_A
 失败复现和成功结果保存在忽略目录 tmp/test-results/：
 invariants-before.log、mq-before.log、acceptance-before.log、integration.xml、integration.log、acceptance.log。
 代码、测试和部署说明按主题拆分为独立 Git 提交。
+
+## CI 基础镜像故障排查
+
+流水线 #39 的自动测试通过，build-image 因 Harbor 代理基础镜像不存在而失败。
+本地 Docker 缓存可构建，不代表独立 BuildKit daemon 能从远程仓库拉取。
+
+BUILD_REGISTRY_PREFIX 可以单独指定普通 Harbor 项目的构建镜像前缀；
+REGISTRY_PREFIX 继续供 Testcontainers 使用，不随构建镜像路径一起改变。
+前缀对应的仓库必须包含 library/golang:1.26-alpine 和 library/alpine:latest。
+本次将已验证的 Go 1.26.8 / Alpine 3.24.2 镜像发布至普通 Harbor 项目供 amd64 Runner 使用。
+后续升级版本时，也应检查远程 manifest，而非仅验证本地 Docker 缓存。
+
+build-image 不下载测试报告，test-results/ 也被排除在 Docker 构建上下文之外。

@@ -11,7 +11,8 @@
 #   HARBOR_USER           镜像仓库账号
 #   HARBOR_PASSWORD       镜像仓库密码（masked）
 #   IMAGE_REPO            业务镜像完整路径
-#   REGISTRY_PREFIX       基础镜像前缀（testcontainers 与 Dockerfile 共用）
+#   REGISTRY_PREFIX       Testcontainers 基础镜像前缀
+#   BUILD_REGISTRY_PREFIX 可选：构建镜像前缀，留空时回退到 REGISTRY_PREFIX
 #   GOLANG_IMAGE          测试阶段用的 golang 镜像
 #   BUILDKIT_IMAGE        构建阶段用的 buildkit 镜像
 #   BUILDKIT_HOST         BuildKit socket 地址（runner 挂进来的）
@@ -68,7 +69,7 @@ test:
 api-acceptance:
   stage: test
   image: "${GOLANG_IMAGE}"
-  allow_failure: false
+  allow_failure: true
   rules:
     - if: '$API_TEST_BASE_URL != ""'
       when: manual
@@ -85,7 +86,9 @@ build-image:
     name: "${BUILDKIT_IMAGE}"
     # ★ 这个镜像 ENTRYPOINT 就是 buildkitd，不清空会和挂进来的 socket 撞车
     entrypoint: [""]
-  needs: ["test"]
+  needs:
+    - job: test
+      artifacts: false
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "product"'
   script:
@@ -102,6 +105,6 @@ build-image:
         --frontend dockerfile.v0 \
         --local context=. \
         --local dockerfile=. \
-        --opt build-arg:REGISTRY_PREFIX="$REGISTRY_PREFIX" \
+        --opt build-arg:REGISTRY_PREFIX="${BUILD_REGISTRY_PREFIX:-$REGISTRY_PREFIX}" \
         --output type=image,name="$IMAGE_REPO:$CI_COMMIT_SHORT_SHA",push=true
     - echo "✅ 已推送 $IMAGE_REPO:$CI_COMMIT_SHORT_SHA"

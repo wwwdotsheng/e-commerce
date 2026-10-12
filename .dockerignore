@@ -9,3 +9,4 @@ logs/
 .env.*
 k8s/**/secret.local.yaml
 tmp/
+test-results/
