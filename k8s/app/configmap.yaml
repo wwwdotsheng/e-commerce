@@ -8,11 +8,12 @@ data:
     app:
       name: "ecommerce-api"
       port: 8080
+      gin_mode: release
       ssl: false
       ssl_crt_path: ""
       ssl_key_path: ""
       # 两个排查用的开关，集群里保持关闭：
-      # 打开会把密码打进日志 / 把原始错误返给客户端
+      # 配置诊断始终脱敏；devMsg 仅在明确启用时返回
       print_config: false
       expose_dev_msg: false
 
@@ -68,6 +69,7 @@ data:
       service_name: "e-commerce"
 
     elasticsearch:
+      enabled: false
       host: "elasticsearch"
       port: 9200
 
