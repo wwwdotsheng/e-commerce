@@ -66,3 +66,13 @@ so also update the overlay tag to keep Git and the cluster consistent.
 API deployment snapshot before this update: `tmp/k8s-testfix-20261012/deployment-before.yaml`.
 
 See [interface and integration tests](../docs/testing.md) for business verification.
+
+## Automatic product verification
+
+The product pipeline builds an image, updates the test API Deployment and then
+runs HTTP business acceptance in one serialized job. The namespace-scoped
+credential is stored as a GitLab file variable for ecommerce-test.
+CI deploys IMAGE_REPO:CI_COMMIT_SHORT_SHA; the image tag in this static overlay
+is the manual baseline. Review/update that tag before manually applying the
+whole overlay so that a manual apply does not replace the CI release.
+Infrastructure, ConfigMaps, Secrets and PVCs are not changed by the CI job.

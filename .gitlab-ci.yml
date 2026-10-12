@@ -17,11 +17,16 @@
 #   BUILDKIT_IMAGE        构建阶段用的 buildkit 镜像
 #   BUILDKIT_HOST         BuildKit socket 地址（runner 挂进来的）
 #   SSL_CERT_FILE         内网 CA bundle 路径
+#   API_TEST_IMAGE        Go + kubectl 验收工具镜像
+#   KUBE_CONFIG           测试环境 kubeconfig（file 变量）
+#   API_TEST_BASE_URL     测试服务 HTTP origin
+#   API_TEST_HOST         Ingress Host（若 URL 使用节点 IP）
 # ═══════════════════════════════════════════════════════════════
 
 stages:
   - test
   - build
+  - verify
 
 variables:
   GOPROXY: https://goproxy.cn,direct
@@ -65,17 +70,28 @@ test:
     reports:
       junit: test-results/integration.xml
 
-# External HTTP acceptance is opt-in.
+# Product deploys and verifies the test environment automatically.
 api-acceptance:
-  stage: test
-  image: "${GOLANG_IMAGE}"
-  allow_failure: true
+  stage: verify
+  image: "${API_TEST_IMAGE}"
+  needs:
+    - job: build-image
+      artifacts: false
+  resource_group: ecommerce-test
+  environment:
+    name: ecommerce-test
+    url: "$API_TEST_BASE_URL"
   rules:
-    - if: '$API_TEST_BASE_URL != ""'
-      when: manual
+    - if: '$CI_COMMIT_BRANCH == "product"'
+      when: on_success
     - when: never
   script:
-    - go test ./tests/acceptance -v -count=1 -timeout=3m
+    - export KUBECONFIG="$KUBE_CONFIG"
+    - bash scripts/deploy-and-test-api.sh
+  artifacts:
+    when: always
+    paths:
+      - test-results/
 
 # ─────────────────────────────────────────────────────────────
 # 2. 构建并推送镜像（只在 master / product 上跑）

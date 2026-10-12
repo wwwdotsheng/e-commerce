@@ -84,15 +84,35 @@ MQ 单元测试覆盖首次成功、暂时失败恢复、达到重试上限、�
 重试次数在当前投递内计算，进程重启后可能重新投递；业务事务保证处理幂等。
 超过重试上限拒绝消息；现有消费队列没有额外失败队列，不应把它描述为完整消息补偿方案。
 
-## CI
+## CI 自动部署与验收
 
-自动 test job 运行 vet、MQ 单元 race 和集成 race/乱序测试，并保存 JUnit 报告。
-外部验收独立为非阻塞的 api-acceptance 手动 job；只有 API_TEST_BASE_URL 配置后才显示。
-手动任务失败仍保留失败结果，但不作为自动测试/构建流水线的通过门槛。
-API_TEST_HOST 用于指定 Ingress Host；完整业务链路还需要 API_TEST_ALLOW_WRITES=1。
-自动集成 job 只运行 tests 包，不递归执行外部验收包。
+product 分支自动执行：test → build-image → api-acceptance。
+验收任务先将 ecommerce-api 更新为 IMAGE_REPO:CI_COMMIT_SHORT_SHA，
+等待滚动更新成功并核对镜像，再执行完整 HTTP 业务链路。
+部署或验收失败都会令流水线失败，日志保存在 test-results/。
+一个 resource_group 锁覆盖部署和验收全过程，避免两个流水线在验收时相互更新服务。
+其他分支不会自动部署到这个测试环境。
 
-本次仅修改 CI 配置；是否在 GitLab 成功执行，需由实际 pipeline 结果确认。
+GitLab 变量：
+- API_TEST_IMAGE：包含 Go 与 kubectl 的工具镜像。
+- KUBE_CONFIG：file 类型，仅限 ecommerce-test 环境。
+- API_TEST_BASE_URL / API_TEST_HOST：该环境的服务入口。
+- IMAGE_REPO：构建任务实际发布的业务镜像仓库。
+
+k8s/ci/rbac.yaml 是管理员执行一次的权限引导配置，不包含凭据值。
+它授予 ecommerce-ci 更新指定 API Deployment、观察 rollout 和读取 Pod 诊断的权限，
+不允许读取 Secret、修改数据库 StatefulSet 或修改其他 Deployment。
+受限 kubeconfig 已经获得用户明确授权，保存在 GitLab 的测试环境 file 变量中，
+不会提交 Git；更换或撤销凭据时更新该变量及对应 ServiceAccount token Secret。
+
+工具镜像源码为 scripts/ci-tools.Dockerfile；构建上下文只需已验证的 kubectl 可执行文件。
+scripts/deploy-and-test-api.sh 执行发布、版本校验与验收。
+测试失败时保留已部署版本和诊断文件，不自动回退，便于判断业务失败原因。
+回退应选择上一成功流水线的镜像，并在测试环境重新执行验收。
+
+这个流程只更新 API 镜像，现有基础设施、ConfigMap、Secret 和 PVC 仍由部署清单管理。
+仓库的 harbor-local 固定镜像标签是手工部署基线；CI 会使用本次提交的动态镜像。
+手工 apply 整个 overlay 前，必须核对镜像标签，避免恢复旧版本。
 
 ## 尚未覆盖
 
