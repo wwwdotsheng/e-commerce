@@ -44,10 +44,9 @@ test:
     - go version
     - go mod download
     - go vet ./...
-    - go test -race ./internal/order
+    - go test -race ./internal/config ./internal/order
     - go install github.com/onsi/ginkgo/v2/ginkgo
     # 环境变量名的规则（viper 前缀是 APP_，点号换成下划线）：
-    #   app.env         → APP_APP_ENV（已废弃，不再用环境名分支）
     #   database.auto_migrate → APP_DATABASE_AUTO_MIGRATE
     #   registry.prefix → IMAGE_REPOSITORY（代码里显式 BindEnv）
     #

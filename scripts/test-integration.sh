@@ -18,6 +18,6 @@ docker run --rm --network host \
   -e APP_DATABASE_LOG_LEVEL=error \
   "${GOLANG_IMAGE:-golang:1.26}" sh -c \
   'go vet ./... &&
-   go test -race ./internal/order -count=1 &&
+   go test -race ./internal/config ./internal/order -count=1 &&
    go test -race ./tests -count=1 -timeout=5m -ginkgo.randomize-all -ginkgo.no-color -ginkgo.junit-report=/reports/integration.xml' \
   2>&1 | tee "$project_dir/tmp/test-results/integration.log"
