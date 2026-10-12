@@ -83,6 +83,14 @@ var _ = BeforeSuite(func() {
 		os.Setenv("APP_AUTH_TOKEN_SECRET", "test-only-token-secret")
 	}
 
+	// These are credentials for disposable containers, never deployment secrets.
+	if os.Getenv("APP_DATABASE_PASSWORD") == "" {
+		os.Setenv("APP_DATABASE_PASSWORD", "test-postgres-password")
+	}
+	if os.Getenv("APP_RABBITMQ_PASSWORD") == "" {
+		os.Setenv("APP_RABBITMQ_PASSWORD", "test-rabbit-password")
+	}
+
 	ctx, stop, config, err := app.Bootstrap()
 	if err != nil {
 		log.Fatalf("应用启动失败：%v", err)
@@ -145,6 +153,7 @@ var _ = BeforeSuite(func() {
 	rmqContainer, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        config.ImageRef(config.TestImages.RabbitMQ),
+			Env:          map[string]string{"RABBITMQ_DEFAULT_USER": config.RabbitMQ.User, "RABBITMQ_DEFAULT_PASS": config.RabbitMQ.Password},
 			ExposedPorts: []string{"5672/tcp"},
 			WaitingFor: wait.ForLog("TCP listener on").
 				WithStartupTimeout(60 * time.Second),

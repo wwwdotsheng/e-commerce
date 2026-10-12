@@ -1,52 +1,49 @@
+# One schema for direct execution, Compose and Kubernetes.
+# Secrets are supplied by APP_* variables; this file contains no credentials.
 app:
   name: ecommerce-api
   port: 8080
+  gin_mode: release
   ssl: false
   ssl_crt_path: ""
   ssl_key_path: ""
-  # 以下两个开关默认取「安全的那一侧」，要用环境变量显式打开：
-  #   APP_APP_PRINT_CONFIG=true    启动时把完整配置打进日志（含密码，仅排查用）
-  #   APP_APP_EXPOSE_DEV_MSG=true  响应里带 devMsg（含原始错误，仅排查用）
   print_config: false
   expose_dev_msg: false
 
 database:
-  host: postgres-dev
+  host: localhost
   port: 5432
   user: postgres
-  password: postgres
-  db_name: postgres
+  password: ""
+  db_name: ecommerce
   ssl_mode: disable
-  max_idle_conns: 100
-  max_open_conns: 100
+  max_idle_conns: 20
+  max_open_conns: 50
   conn_max_lifetime: 10
   time_zone: Asia/Shanghai
   log_level: info
-  # schema 变更走 migrations/，不靠启动时自动建表。
-  # 本地开发用 APP_DATABASE_AUTO_MIGRATE=true 打开。
   auto_migrate: false
 
 redis:
-  host: redis
+  host: localhost
   port: 6379
-  password:
+  password: ""
   db: 0
   pool_size: 10
 
 rabbitmq:
-  user: guest
-  password: guest
-  host: rabbitmq
+  host: localhost
   port: 5672
+  user: ecommerce
+  password: ""
 
 registry:
-  # 镜像仓库前缀，留空 = Docker Hub。CI 里用 APP_REGISTRY_PREFIX 覆盖
   prefix: ""
 
 log:
-  console_level: debug
-  file_level: debug
-  filename: ./logs/app.log
+  console_level: info
+  file_level: ""
+  filename: ""
   max_size: 100
   max_backups: 3
   max_age: 28
@@ -54,31 +51,22 @@ log:
 auth:
   access_token_expire: 15m
   refresh_token_expire: 168h
-  # 不在这里放默认值 —— Validate() 会拒绝空值和示例值。
-  # 各环境用 APP_AUTH_TOKEN_SECRET 提供：
-  #   本地开发  放 .env（代码里 godotenv.Load() 会读）
-  #   集群部署  来自 Secret
-  #   测试/CI   由 CI 变量注入
-  # 生成：openssl rand -base64 48 | tr -d '\n'
   token_secret: ""
 
 otel:
-  enabled: true
+  enabled: false
   endpoint:
-    trace_endpoint: tempo:4317
-    metric_endpoint: prometheus:9090
+    trace_endpoint: ""
+    metric_endpoint: ""
   service_name: e-commerce
 
-test_images:
-  postgres: postgres:15-alpine
-  redis: redis:7-alpine
-  rabbitmq: rabbitmq:3-alpine
-
-
 elasticsearch:
-  host: elasticsearch
+  enabled: false
+  host: localhost
   port: 9200
 
+# Preserve the existing timeout. Values here are milliseconds.
+# Changing an existing RabbitMQ queue TTL requires a queue migration.
 order_mq:
   exchange: dlx_exchange
   consumer_queue: order_timeout_queue
