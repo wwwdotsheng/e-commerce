@@ -208,3 +208,49 @@ func TestRedactedDiagnostics(t *testing.T) {
 		t.Fatal("redaction mutated the active configuration")
 	}
 }
+
+func TestInitConfigPathSelection(t *testing.T) {
+	t.Run("unset path reads default YAML", func(t *testing.T) {
+		requiredEnv(t)
+		root := t.TempDir()
+		t.Chdir(root)
+		configDir := filepath.Join(root, "configs")
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("app:\n  port: 8181\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := Init()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.App.Port != 8181 {
+			t.Fatalf("default YAML port = %d, want 8181", cfg.App.Port)
+		}
+	})
+
+	t.Run("explicit empty path skips default YAML", func(t *testing.T) {
+		requiredEnv(t)
+		t.Setenv("CONFIG_PATH", "")
+		root := t.TempDir()
+		t.Chdir(root)
+		configDir := filepath.Join(root, "configs")
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		// This invalid default file proves that an explicit empty path is not read.
+		if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("invalid: [yaml"), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := Init()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.App.Port != Defaults().App.Port {
+			t.Fatalf("ENV-only default port = %d, want %d", cfg.App.Port, Defaults().App.Port)
+		}
+	})
+}
