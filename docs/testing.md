@@ -13,7 +13,7 @@
 ## 在 Ubuntu 服务器运行
 
 工作目录：
-/home/w-ubuntu/GolandProjects/experiments/e-commerce
+/mnt/sdb/准备迁移/Projects/GolandProjects/experiments/e-commerce
 
 服务器无需安装 Go；脚本使用 Go 1.26 容器，需要 Docker、Bash 和 docker.sock 权限。
 依赖镜像前缀按运行环境设置，不写死在测试代码中。

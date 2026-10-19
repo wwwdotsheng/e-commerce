@@ -6,7 +6,6 @@ import (
 	"e-commerce/internal/auth"
 	"e-commerce/internal/config"
 	"e-commerce/internal/coupon"
-	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
 	"e-commerce/internal/shop"
@@ -73,12 +72,8 @@ var _ = BeforeSuite(func() {
 		os.Setenv("CONFIG_PATH", "../configs/config.yaml")
 	}
 
-	// 这两个开关测试必须显式给（配置文件里没有默认值）：
-	//   AUTO_MIGRATE  测试库的表由 AutoMigrate 建，不走 migrations/
-	//   TOKEN_SECRET  config.Validate() 会拒绝空值和示例值
-	if os.Getenv("APP_DATABASE_AUTO_MIGRATE") == "" {
-		os.Setenv("APP_DATABASE_AUTO_MIGRATE", "true")
-	}
+	// The integration suite applies the same checked-in SQL migrations used by deployments.
+	// TOKEN_SECRET is required by config validation; this value is for disposable tests only.
 	if os.Getenv("APP_AUTH_TOKEN_SECRET") == "" {
 		os.Setenv("APP_AUTH_TOKEN_SECRET", "test-only-token-secret")
 	}
@@ -194,18 +189,8 @@ var _ = BeforeSuite(func() {
 		TimeZone:        config.Database.TimeZone,
 		LogLevel:        config.Database.LogLevel,
 	})
-	if err := testDB.AutoMigrate(
-		&model.User{},
-		&model.UserWallet{},
-		&model.WalletLog{},
-		&model.Product{},
-		&model.Order{},
-		&model.StockChangeLog{},
-		&model.CouponTemplate{},
-		&model.UserCoupon{},
-		&model.Shop{},
-	); err != nil {
-		logger.Fatal("数据库AutoMigrate失败")
+	if err := applyMigrations(testDB, "../migrations"); err != nil {
+		logger.Fatal("应用数据库迁移失败", zap.Error(err))
 	}
 	testRedis, err = redis.Init(ctx, redis.Config{
 		Host:     config.Redis.Host,

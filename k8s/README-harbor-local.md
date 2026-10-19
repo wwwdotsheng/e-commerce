@@ -1,7 +1,7 @@
 # Existing cluster deployment
 
 Run these commands on 192.168.200.5 as w-ubuntu, from:
-`/home/w-ubuntu/GolandProjects/experiments/e-commerce`.
+`/mnt/sdb/准备迁移/Projects/GolandProjects/experiments/e-commerce`.
 
 ## Cluster access
 
@@ -18,8 +18,9 @@ remote-config above; do not replace the existing kubeconfig.
 This overlay deploys the API, PostgreSQL, Redis and RabbitMQ to `ecommerce`.
 Persistent volumes use `local-path`. Preserve the existing PVCs and Secrets.
 Elasticsearch is not deployed; product search is unavailable until it is added.
-The API config disables AutoMigrate and OpenTelemetry. Apply reviewed database
-migrations separately when schema changes are required.
+The API never changes the database schema at startup. Apply reviewed Atlas
+migrations separately before rolling out an application version that needs them;
+see [the database migration guide](../docs/database-migrations.md).
 
 ## Build and update
 

@@ -20,8 +20,9 @@
 使用 Docker Compose（核心栈：API、PostgreSQL、Redis、RabbitMQ）：
 
 1. 复制 .env.example 为 .env，替换 JWT 签名密钥并填写依赖密码。
-2. 新数据库显式设置 APP_DATABASE_AUTO_MIGRATE=true。
-3. 执行 docker compose up -d --build --wait。
+2. 启动 PostgreSQL：docker compose up -d --wait postgres。
+3. 安装 Atlas CLI，并按数据库迁移指南配置 DATABASE_URL、执行待应用迁移。
+4. 启动应用及其他依赖：docker compose up -d --build --wait。
 
 API： http://localhost:10000
 健康/就绪： /health、/ready
@@ -37,7 +38,7 @@ APP_ 环境变量可覆盖所有配置字段，包括 YAML 未出现的字段。
 Docker Compose 使用 YAML 配置文件；Kubernetes 用 ConfigMap 注入普通 APP_* 环境变量、Secret 注入敏感值，不挂载应用配置文件。
 密码与 JWT Secret 没有代码默认值；错误或未知配置会阻止启动。
 
-配置项、两种部署方式和兼容说明见 [配置与部署](docs/configuration.md)。
+配置项、两种部署方式和兼容说明见 [配置与部署](docs/configuration.md)。数据库 schema 的版本管理和部署步骤见[数据库迁移指南](docs/database-migrations.md)。
 
 ## 项目结构
 

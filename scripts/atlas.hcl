@@ -19,10 +19,10 @@ env "gorm" {
     dir = "file://../migrations"
   }
 
-  # 修改这里：指向你 docker-compose 里的 5432 端口
-  # 注意：必须加上 sslmode=disable，因为本地容器通常没配 SSL
-  dev = "postgres://postgres:postgres@localhost:5432/dev?sslmode=disable"
-  url = "postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable"
+  # Atlas uses a disposable PostgreSQL 15 dev database to plan migrations.
+  dev = "docker://postgres/15/dev"
+  # Set DATABASE_URL to the target database. Never commit credentials here.
+  url = getenv("DATABASE_URL")
 
   format {
     migrate {

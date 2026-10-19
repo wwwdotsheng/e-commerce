@@ -6,7 +6,6 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/coupon"
 	"e-commerce/internal/middleware"
-	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
 	"e-commerce/internal/shop"
@@ -183,23 +182,6 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	})
 	if err != nil {
 		return fmt.Errorf("数据库初始化失败: %w", err)
-	}
-
-	// Schema creation is controlled only by database.auto_migrate.
-	if config.Database.AutoMigrate {
-		if err := db.AutoMigrate(
-			&model.User{},
-			&model.UserWallet{},
-			&model.WalletLog{},
-			&model.Product{},
-			&model.Order{},
-			&model.StockChangeLog{},
-			&model.CouponTemplate{},
-			&model.UserCoupon{},
-			&model.Shop{},
-		); err != nil {
-			return fmt.Errorf("数据库 AutoMigrate 失败: %w", err)
-		}
 	}
 
 	rdb, err := redis.Init(ctx, redis.Config{

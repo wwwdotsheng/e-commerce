@@ -22,7 +22,6 @@ database:
   conn_max_lifetime: 10
   time_zone: Asia/Shanghai
   log_level: info
-  auto_migrate: false
 
 redis:
   host: localhost

@@ -52,10 +52,6 @@ type DatabaseSection struct {
 	ConnMaxLifetime int    `mapstructure:"conn_max_lifetime"`
 	TimeZone        string `mapstructure:"time_zone"`
 	LogLevel        string `mapstructure:"log_level"`
-
-	// AutoMigrate 默认 false —— 生产环境的 schema 变更走 migrations/，
-	// 不该由应用启动时自动建表。本地开发用 APP_DATABASE_AUTO_MIGRATE=true 打开。
-	AutoMigrate bool `mapstructure:"auto_migrate"`
 }
 
 type RedisSection struct {
@@ -207,6 +203,9 @@ func Load(options LoadOptions) (*AppConfig, error) {
 	if _, exists := os.LookupEnv("APP_APP_ENV"); exists {
 		return nil, errors.New("APP_APP_ENV is no longer supported; configure individual features")
 	}
+	if _, exists := os.LookupEnv("APP_DATABASE_AUTO_MIGRATE"); exists {
+		return nil, errors.New("APP_DATABASE_AUTO_MIGRATE has been removed; apply versioned migrations with Atlas")
+	}
 	v := viper.New()
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
@@ -233,6 +232,9 @@ func Load(options LoadOptions) (*AppConfig, error) {
 		}
 		if _, exists := entries["APP_APP_ENV"]; exists {
 			return nil, errors.New("dotenv APP_APP_ENV is no longer supported")
+		}
+		if _, exists := entries["APP_DATABASE_AUTO_MIGRATE"]; exists {
+			return nil, errors.New("dotenv APP_DATABASE_AUTO_MIGRATE has been removed; apply versioned migrations with Atlas")
 		}
 		overrides := map[string]interface{}{}
 		_ = schemaFields(reflect.ValueOf(Defaults()), "", func(key string, _ interface{}) error {

@@ -48,18 +48,18 @@ func TestEnvOnlyAndDefaults(t *testing.T) {
 	if cfg.App.Port != 9091 || cfg.Auth.AccessTokenExpire != 2*time.Minute {
 		t.Fatal("ENV-only overrides missing")
 	}
-	if cfg.App.GinMode != "release" || cfg.Database.AutoMigrate || cfg.Otel.Enabled || cfg.Elasticsearch.Enabled || cfg.App.ExposeDevMsg {
+	if cfg.App.GinMode != "release" || cfg.Otel.Enabled || cfg.Elasticsearch.Enabled || cfg.App.ExposeDevMsg {
 		t.Fatal("unsafe or environment-dependent defaults")
 	}
 }
 func TestEnvOverridesOmittedYamlKey(t *testing.T) {
 	requiredEnv(t)
-	t.Setenv("APP_DATABASE_AUTO_MIGRATE", "true")
+	t.Setenv("APP_APP_EXPOSE_DEV_MSG", "true")
 	cfg, err := Load(LoadOptions{ConfigPath: configFile(t, "app:\n  port: 8088\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Database.AutoMigrate || cfg.App.Port != 8088 {
+	if !cfg.App.ExposeDevMsg || cfg.App.Port != 8088 {
 		t.Fatal("a key omitted from YAML must still bind to ENV")
 	}
 }
@@ -97,6 +97,7 @@ func TestConfigurationFileErrors(t *testing.T) {
 	requiredEnv(t)
 	for _, tc := range []struct{ name, content string }{
 		{"invalid YAML", "app: [broken"},
+		{"removed AutoMigrate option", "database:\n  auto_migrate: true\n"},
 		{"duration without units", "auth:\n  access_token_expire: 15\n"},
 		{"unknown key", "database:\n  auto_migratte: true\n"},
 		{"removed environment selector", "app:\n  env: Dev\n"},
@@ -122,6 +123,20 @@ func TestRemovedEnvironmentVariable(t *testing.T) {
 		t.Fatal("removed environment selector silently accepted")
 	}
 }
+func TestRemovedAutoMigrationEnvironmentVariable(t *testing.T) {
+	requiredEnv(t)
+	t.Setenv("APP_DATABASE_AUTO_MIGRATE", "true")
+	if _, err := Load(LoadOptions{}); err == nil || !strings.Contains(err.Error(), "has been removed") {
+		t.Fatal("removed AutoMigration ENV must fail with migration guidance")
+	}
+
+	requiredEnv(t)
+	dotenv := configFile(t, "APP_DATABASE_AUTO_MIGRATE=true\n")
+	if _, err := Load(LoadOptions{DotenvPath: dotenv}); err == nil || !strings.Contains(err.Error(), "has been removed") {
+		t.Fatal("removed AutoMigration dotenv key must fail with migration guidance")
+	}
+}
+
 func TestMissingDotenvFails(t *testing.T) {
 	requiredEnv(t)
 	if _, err := Load(LoadOptions{DotenvPath: filepath.Join(t.TempDir(), "missing.env")}); err == nil {
@@ -157,7 +172,6 @@ func TestInvalidTypedSettings(t *testing.T) {
 		{"APP_AUTH_REFRESH_TOKEN_EXPIRE", "1m"}, {"APP_ORDER_MQ_TTL_MS", "0"},
 		{"APP_DATABASE_MAX_IDLE_CONNS", "51"}, {"APP_REDIS_POOL_SIZE", "0"},
 		{"APP_LOG_CONSOLE_LEVEL", "verbose"}, {"APP_APP_GIN_MODE", "Prod"},
-		{"APP_DATABASE_AUTO_MIGRATE", "maybe"},
 	} {
 		t.Run(tc.key+"="+tc.value, func(t *testing.T) {
 			t.Setenv(tc.key, tc.value)

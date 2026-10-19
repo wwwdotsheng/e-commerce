@@ -23,7 +23,6 @@ AppEnv / app.env / APP_APP_ENV 已移除；旧名称出现时会明确报错，�
 
 | 配置项 | 默认 | 含义 |
 |---|---|---|
-| database.auto_migrate | false | 是否由应用创建/更新表 |
 | otel.enabled | false | 是否启用链路和指标导出 |
 | elasticsearch.enabled | false | 是否初始化并使用搜索依赖 |
 | app.print_config | false | 打印脱敏配置，永远不打印密码和 JWT Secret |
@@ -47,7 +46,7 @@ database.conn_max_lifetime 保留原有整数语义，单位为分钟；此轮�
 
 1. 将 .env.example 复制为 .env；将 JWT 示例值替换为随机签名密钥。
 2. 填写数据库和 RabbitMQ 密码；同一变量分别注入应用和对应依赖容器。
-3. 明确设置 APP_DATABASE_AUTO_MIGRATE=true 才会为新数据库建表。
+3. 先启动 PostgreSQL，再按数据库迁移指南运行 Atlas 迁移。
 4. 执行 docker compose up -d --build --wait。
 5. 检查 http://localhost:10000/ready 和 /swagger。
 
