@@ -320,10 +320,6 @@ func (c *AppConfig) Validate() error {
 	port("rabbitmq.port", c.RabbitMQ.Port)
 	required("rabbitmq.user", c.RabbitMQ.User)
 	required("rabbitmq.password", c.RabbitMQ.Password)
-	required("auth.token_secret", c.Auth.TokenSecret)
-	if c.Auth.TokenSecret == "12345678" || strings.Contains(c.Auth.TokenSecret, "replace-with") {
-		problems = append(problems, errors.New("auth.token_secret must not be a placeholder"))
-	}
 	if c.Auth.AccessTokenExpire <= 0 || c.Auth.RefreshTokenExpire <= 0 {
 		problems = append(problems, errors.New("auth token lifetimes must be positive durations"))
 	}

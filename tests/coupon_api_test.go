@@ -2,38 +2,17 @@ package tests
 
 import (
 	"bytes"
+	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
-	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-// accountIDFromToken 从 access token 的 payload 里取 account_id。
-// register / login 的响应都不返回它，而 /coupon/grant 需要它。
-func accountIDFromToken(token string) string {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return ""
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return ""
-	}
-	var claims struct {
-		AccountID string `json:"account_id"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return ""
-	}
-	return claims.AccountID
-}
 
 // CouponApi 覆盖 /api/v1/coupon/* 三个接口。
 //
@@ -111,7 +90,9 @@ var _ = Describe("CouponApi", Ordered, func() {
 		couponToken = loginData.AccessToken
 		Expect(couponToken).NotTo(BeEmpty(), "拿不到 token，后续用例无法进行")
 
-		couponUserID = accountIDFromToken(couponToken)
+		var account model.User
+		Expect(testDB.Where("email = ?", couponEmail).First(&account).Error).To(Succeed())
+		couponUserID = account.ID.String()
 		Expect(couponUserID).NotTo(BeEmpty(), "拿不到 account_id，grant 用例无法进行")
 	})
 

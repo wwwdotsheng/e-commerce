@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"sync"
 	"time"
 
@@ -214,14 +212,13 @@ var _ = Describe("Order invariants", func() {
 		}, Entry("missing token", ""), Entry("malformed token", "invalid-token"),
 	)
 
-	It("rejects a correctly signed but expired access token", func() {
-		parsed, _, err := jwt.NewParser().ParseUnverified(token, jwt.MapClaims{})
+	It("rejects an expired opaque access token", func() {
+		ctx := context.Background()
+		sessions, err := testRedis.SMembers(ctx, fmt.Sprintf("ident:u_sess:%s", buyer.ID)).Result()
 		Expect(err).NotTo(HaveOccurred())
-		claims := parsed.Claims.(jwt.MapClaims)
-		claims["exp"] = time.Now().Add(-time.Minute).Unix()
-		expired, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(os.Getenv("APP_AUTH_TOKEN_SECRET")))
-		Expect(err).NotTo(HaveOccurred())
-		r := invariantRequest(http.MethodGet, "/api/v1/order/list?page_num=1&page_size=20", expired, nil)
+		Expect(sessions).To(HaveLen(1))
+		Expect(testRedis.HSet(ctx, "ident:sess:"+sessions[0], "at_exp", time.Now().Add(-time.Minute).Unix()).Err()).To(Succeed())
+		r := invariantRequest(http.MethodGet, "/api/v1/order/list?page_num=1&page_size=20", token, nil)
 		Expect(r.Code).To(Equal(errno.ErrAuthTokenExpired.FullCode()))
 	})
 	It("revokes order access when the session is logged out", func() {

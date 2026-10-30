@@ -140,3 +140,5 @@ kubectl apply -k k8s/overlays/production
 ## License
 
 MIT
+
+认证使用 43 字符的安全随机令牌，由 Redis 保存会话并校验有效期。由 JWT 升级后需重新登录。`APP_AUTH_TOKEN_SECRET` 仅保留配置兼容性，不再参与鉴权；访问令牌和刷新令牌的有效期仍可分别配置。

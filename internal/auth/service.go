@@ -2,15 +2,15 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"e-commerce/internal/app/identity"
 	"e-commerce/internal/config"
 	"e-commerce/pkg/errno"
+	"encoding/base64"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -26,12 +26,6 @@ var (
 type LoginInput struct {
 	Email    string
 	Password string
-}
-
-type TokenPayload struct {
-	identity.AccountInfo
-	TokenType TokenType `json:"token_type"`
-	jwt.RegisteredClaims
 }
 
 type TokenPair struct {
@@ -56,116 +50,43 @@ func genSessionId() (string, error) {
 	return result, nil
 }
 
-// CreateSession 创建Session
-func (svc *Service) CreateSession(ctx context.Context, userID uuid.UUID) (string, error) {
-	sid, err := genSessionId()
-	if err != nil {
-		return "", err
-	}
-
-	tokenPayload := TokenPayload{
-		AccountInfo: identity.AccountInfo{
-			AccountId: userID,
-			SessionID: sid,
-		},
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(svc.config.AccessTokenExpire)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenPayload)
-	return token.SignedString([]byte(svc.config.TokenSecret))
-}
-
-// VerifyToken 验证Token是否正常
+// VerifyToken resolves an opaque token through the server-side session.
 func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType TokenType) (*identity.AccountInfo, error) {
-	payload := &TokenPayload{}
-	token, err := jwt.ParseWithClaims(userToken, payload, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errno.ErrAuthInvalidToken
-		}
-		return []byte(svc.config.TokenSecret), nil
-	})
-	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return nil, errno.ErrAuthTokenExpired.WithRaw(err)
-		} else if errors.Is(err, jwt.ErrTokenMalformed) {
-			return nil, errno.ErrAuthInvalidToken.WithRaw(err)
-		}
-		return nil, errno.ErrAuthInvalidToken.WithRaw(err)
-	}
-
-	claims, ok := token.Claims.(*TokenPayload)
-	if (!ok || !token.Valid) || (claims.TokenType != tokenType) {
+	if tokenType != AccessToken && tokenType != RefreshToken {
 		return nil, errno.ErrAuthInvalidToken
 	}
-
-	var findToken string
-	if claims.TokenType == AccessToken {
-		findToken, err = svc.repo.getAccessToken(ctx, claims.SessionID)
-	} else if claims.TokenType == RefreshToken {
-		findToken, err = svc.repo.getRefreshToken(ctx, claims.SessionID)
+	decoded, err := base64.RawURLEncoding.DecodeString(userToken)
+	if err != nil || len(decoded) != 32 || base64.RawURLEncoding.EncodeToString(decoded) != userToken {
+		return nil, errno.ErrAuthInvalidToken
 	}
-
+	account, err := svc.repo.verifyOpaqueToken(ctx, userToken, tokenType)
+	if errors.Is(err, redis.Nil) || errors.Is(err, RepoErrSessionNotFound) {
+		return nil, errno.ErrAuthInvalidToken
+	}
+	if errors.Is(err, errTokenExpired) {
+		return nil, errno.ErrAuthTokenExpired
+	}
 	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return nil, errno.ErrAuthInvalidToken.WithRaw(err)
-		}
 		return nil, errno.ErrInternalServer.WithRaw(err)
 	}
-	if findToken != userToken {
-		return nil, errno.ErrAuthSessionRevoked
-	}
-	return &claims.AccountInfo, nil
+	return account, nil
 }
 
 func (svc *Service) generateToken(userID uuid.UUID, sessionID string, tokenType TokenType) (string, error) {
-	jti, err := generateRandomString(5)
-	if err != nil {
-		return "", fmt.Errorf("generate token jti fail: %w", err)
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("generate random token: %w", err)
 	}
-	var tokenPayload TokenPayload
-	if tokenType == AccessToken {
-		tokenPayload = TokenPayload{
-			AccountInfo: identity.AccountInfo{
-				AccountId: userID,
-				SessionID: sessionID,
-			},
-			TokenType: tokenType,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(svc.config.AccessTokenExpire)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-				ID:        jti,
-			},
-		}
-	} else if tokenType == RefreshToken {
-		tokenPayload = TokenPayload{
-			AccountInfo: identity.AccountInfo{
-				AccountId: userID,
-				SessionID: sessionID,
-			},
-			TokenType: tokenType,
-			RegisteredClaims: jwt.RegisteredClaims{
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(svc.config.RefreshTokenExpire)),
-				IssuedAt:  jwt.NewNumericDate(time.Now()),
-				ID:        jti,
-			},
-		}
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, tokenPayload)
-	tokenStr, err := token.SignedString([]byte(svc.config.TokenSecret))
-	if err != nil {
-		return "", fmt.Errorf("generate token error: %w", err)
-	}
-	return tokenStr, nil
+	return base64.RawURLEncoding.EncodeToString(random[:]), nil
 }
 
 func (svc *Service) Login(ctx context.Context, input *LoginInput) (*TokenPair, error) {
 	user, err := svc.repo.FindUserByEmail(ctx, input.Email)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, errno.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, errno.ErrInternalServer.WithRaw(err)
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password))
