@@ -9,7 +9,6 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
-	"e-commerce/internal/shop"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
@@ -82,7 +81,6 @@ func SetupRouter(
 	productSvc *product.Service,
 	orderSvc *order.Service,
 	couponH *coupon.Handler,
-	shopH *shop.Handler,
 	logger *zap.Logger,
 	mp *metric.MeterProvider,
 ) (*gin.Engine, error) {
@@ -163,11 +161,6 @@ func SetupRouter(
 		couponGroup.POST("/template", couponH.CreateTemplate)
 		couponGroup.POST("/grant", couponH.GrantCoupon)
 		couponGroup.GET("/list", couponH.ListUserCoupons)
-
-		shopGroup := v1.Group("/shop").Use(accessTokenAuthMiddleware)
-		shopGroup.POST("/create", middleware.RequireUserType(model.UserTypeSeller), shopH.CreateShop)
-		shopGroup.GET("/list", shopH.ListShops)
-		shopGroup.GET("/:id", shopH.GetShop)
 	}
 	return r, nil
 }
@@ -271,10 +264,6 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	couponSvc := coupon.NewService(db, couponRepo, couponMetrics)
 	couponH := coupon.NewHandler(couponSvc)
 
-	shopRepo := shop.NewRepository(db)
-	shopSvc := shop.NewService(shopRepo)
-	shopH := shop.NewHandler(shopSvc)
-
 	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, orderMetrics)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
@@ -282,7 +271,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("启动订单消费者失败: %w", err)
 	}
 
-	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
+	r, err := SetupRouter(&config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
 	if err != nil {
 		return fmt.Errorf("初始化路由失败: %w", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"e-commerce/internal/coupon"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
-	"e-commerce/internal/shop"
 	"e-commerce/internal/user"
 	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
@@ -246,13 +245,11 @@ var _ = BeforeSuite(func() {
 	}
 	couponRepo := coupon.NewRepository(testDB)
 	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics))
-	shopRepo := shop.NewRepository(testDB)
-	shopH := shop.NewHandler(shop.NewService(shopRepo))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
 	testOrderService = orderSvc
 	testOrderMQConfig = config.OrderMQ
 
-	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, shopH, logger, &mp)
+	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)
 	if err != nil {
 		logger.Fatal("初始化路由失败", zap.Error(err))
 	}

@@ -27,8 +27,7 @@ type doc struct {
 	Description string  `json:"description"`
 	Price       float64 `json:"price"`
 	Status      string  `json:"status"`
-	Publisher   string  `json:"publisher"`
-	ShopID      string  `json:"shop_id"`
+	SellerID    string  `json:"seller_id"`
 	CreatedAt   string  `json:"created_at"`
 }
 
@@ -38,18 +37,13 @@ func newSearchRepo(es *elasticsearch.Client, logger *zap.Logger) *searchRepo {
 
 // index 索引一个产品（创建或全量更新）
 func (r *searchRepo) index(ctx context.Context, p *model.Product) {
-	shopID := ""
-	if p.ShopID != nil {
-		shopID = p.ShopID.String()
-	}
 	d := doc{
 		ID:          p.ID.String(),
 		Name:        p.Name,
 		Description: p.Description,
 		Price:       p.Price,
 		Status:      string(p.Status),
-		Publisher:   p.Publisher.String(),
-		ShopID:      shopID,
+		SellerID:    p.SellerID.String(),
 		CreatedAt:   p.CreatedAt.Format(time.RFC3339),
 	}
 
@@ -85,7 +79,7 @@ func (r *searchRepo) remove(ctx context.Context, id string) {
 }
 
 // search 搜索产品，返回匹配的 ID 列表
-func (r *searchRepo) search(ctx context.Context, query string, min, max *float64, page, size int, shopID *uuid.UUID) ([]string, int64, error) {
+func (r *searchRepo) search(ctx context.Context, query string, min, max *float64, page, size int, sellerID *uuid.UUID) ([]string, int64, error) {
 	var must []map[string]any
 
 	if query != "" {
@@ -109,8 +103,8 @@ func (r *searchRepo) search(ctx context.Context, query string, min, max *float64
 		filters = append(filters, map[string]any{"range": map[string]any{"price": priceFilter}})
 	}
 
-	if shopID != nil {
-		filters = append(filters, map[string]any{"term": map[string]any{"shop_id.keyword": shopID.String()}})
+	if sellerID != nil {
+		filters = append(filters, map[string]any{"term": map[string]any{"seller_id.keyword": sellerID.String()}})
 	}
 
 	body := map[string]any{
@@ -190,18 +184,13 @@ func (r *searchRepo) rebuildIndex(ctx context.Context, products []*model.Product
 					"_id":    p.ID.String(),
 				},
 			}
-			shopID := ""
-			if p.ShopID != nil {
-				shopID = p.ShopID.String()
-			}
 			body := doc{
 				ID:          p.ID.String(),
 				Name:        p.Name,
 				Description: p.Description,
 				Price:       p.Price,
 				Status:      string(p.Status),
-				Publisher:   p.Publisher.String(),
-				ShopID:      shopID,
+				SellerID:    p.SellerID.String(),
 				CreatedAt:   p.CreatedAt.Format(time.RFC3339),
 			}
 
@@ -231,4 +220,3 @@ func (r *searchRepo) rebuildIndex(ctx context.Context, products []*model.Product
 	r.logger.Info("ES index rebuilt", zap.Int("count", len(products)))
 	return nil
 }
-

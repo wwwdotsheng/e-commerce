@@ -120,6 +120,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 		}
 
 		order = &model.Order{
+			SellerID:       p.SellerID,
 			ID:             orderID,
 			UserID:         userID,
 			ProductId:      param.ProductID,

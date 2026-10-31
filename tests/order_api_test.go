@@ -103,10 +103,10 @@ var _ = Describe("OrderApi", Ordered, func() {
 			buyerID, "order-buyer", "order-buyer@test.com", string(pwHash))
 
 		productID = uuid.New()
-		testDB.Exec(`INSERT INTO products (id, publisher, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+		testDB.Exec(`INSERT INTO products (id, seller_id, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
 			productID, publisherID, "Test Item", "desc", 99.99, 10, 0, "active", 1)
 
-		testDB.Exec(`INSERT INTO products (id, publisher, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+		testDB.Exec(`INSERT INTO products (id, seller_id, name, description, price, stock, frozen_stock, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
 			lowStockProduct, publisherID, "Low Stock", "desc", 9.99, 0, 0, "active", 1)
 
 		accessToken = doLogin("order-buyer@test.com", "password123")

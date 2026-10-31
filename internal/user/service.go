@@ -16,7 +16,7 @@ import (
 
 type RegisterInput struct {
 	UserType        model.UserType
-	ShopName        string
+	SellerName      string
 	ApplicationNote string
 	UserName        string
 	Email           string
@@ -40,7 +40,7 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	if input.UserType != model.UserTypeBuyer && input.UserType != model.UserTypeSeller {
 		return errno.ErrInvalidParam
 	}
-	if input.UserType == model.UserTypeSeller && (strings.TrimSpace(input.ShopName) == "" || strings.TrimSpace(input.ApplicationNote) == "") {
+	if input.UserType == model.UserTypeSeller && (strings.TrimSpace(input.SellerName) == "" || strings.TrimSpace(input.ApplicationNote) == "") {
 		return errno.ErrInvalidParam
 	}
 	var errCode = MetErrCodeInternal
@@ -68,7 +68,7 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 			status = model.UserStatusPending
 		}
 		user := &model.User{
-			UserType: input.UserType, Status: status, ShopName: input.ShopName, ApplicationNote: input.ApplicationNote,
+			UserType: input.UserType, Status: status, SellerName: input.SellerName, ApplicationNote: input.ApplicationNote,
 			UserName: input.UserName,
 			Email:    input.Email,
 			Password: string(bytes),

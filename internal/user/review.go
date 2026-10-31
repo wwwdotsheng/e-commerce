@@ -17,7 +17,7 @@ type ApplicationView struct {
 	Email           string           `json:"email"`
 	UserType        model.UserType   `json:"user_type"`
 	Status          model.UserStatus `json:"status"`
-	ShopName        string           `json:"shop_name"`
+	SellerName      string           `json:"seller_name"`
 	ApplicationNote string           `json:"application_note"`
 	ReviewReason    string           `json:"review_reason"`
 	ReviewedBy      *uuid.UUID       `json:"reviewed_by"`
@@ -25,7 +25,7 @@ type ApplicationView struct {
 }
 
 func view(u model.User) ApplicationView {
-	return ApplicationView{u.ID, u.UserName, u.Email, u.UserType, u.Status, u.ShopName, u.ApplicationNote, u.ReviewReason, u.ReviewedBy, u.ReviewedAt}
+	return ApplicationView{u.ID, u.UserName, u.Email, u.UserType, u.Status, u.SellerName, u.ApplicationNote, u.ReviewReason, u.ReviewedBy, u.ReviewedAt}
 }
 func (svc *Service) GetAccount(ctx context.Context, id uuid.UUID) (*ApplicationView, error) {
 	var u model.User
@@ -85,16 +85,16 @@ func (svc *Service) ReviewSellerApplication(ctx context.Context, admin, id uuid.
 		if err := tx.Model(&u).Updates(map[string]interface{}{"status": status, "review_reason": reason, "reviewed_by": admin, "reviewed_at": now}).Error; err != nil {
 			return err
 		}
-		return tx.Exec("INSERT INTO seller_application_reviews (user_id, reviewer_id, decision, reason, shop_name, application_note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, admin, decision, reason, u.ShopName, u.ApplicationNote, now).Error
+		return tx.Exec("INSERT INTO seller_application_reviews (user_id, reviewer_id, decision, reason, seller_name, application_note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", id, admin, decision, reason, u.SellerName, u.ApplicationNote, now).Error
 	})
 }
-func (svc *Service) ResubmitSellerApplication(ctx context.Context, id uuid.UUID, shop, note string) error {
-	shop = strings.TrimSpace(shop)
+func (svc *Service) ResubmitSellerApplication(ctx context.Context, id uuid.UUID, name, note string) error {
+	name = strings.TrimSpace(name)
 	note = strings.TrimSpace(note)
-	if shop == "" || note == "" {
+	if name == "" || note == "" {
 		return errno.ErrInvalidParam
 	}
-	result := svc.repo.GetDB(ctx).Model(&model.User{}).Where("id = ? AND user_type = ? AND status = ?", id, model.UserTypeSeller, model.UserStatusRejected).Updates(map[string]interface{}{"shop_name": shop, "application_note": note, "status": model.UserStatusPending, "review_reason": "", "reviewed_by": nil, "reviewed_at": nil})
+	result := svc.repo.GetDB(ctx).Model(&model.User{}).Where("id = ? AND user_type = ? AND status = ?", id, model.UserTypeSeller, model.UserStatusRejected).Updates(map[string]interface{}{"seller_name": name, "application_note": note, "status": model.UserStatusPending, "review_reason": "", "reviewed_by": nil, "reviewed_at": nil})
 	if result.Error != nil {
 		return result.Error
 	}

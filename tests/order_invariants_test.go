@@ -56,7 +56,7 @@ var _ = Describe("Order invariants", func() {
 		other = model.User{ID: uuid.New(), UserName: "inv-other-" + uuid.NewString()[:8], Email: uuid.NewString() + "@example.test", Password: string(hash)}
 		Expect(testDB.Create(&buyer).Error).To(Succeed())
 		Expect(testDB.Create(&other).Error).To(Succeed())
-		p = model.Product{ID: uuid.New(), Publisher: other.ID, Name: "Invariant product", Description: "fixture", Price: 100, Stock: 5, Status: model.ProductStatusActive, Version: 1}
+		p = model.Product{ID: uuid.New(), SellerID: other.ID, Name: "Invariant product", Description: "fixture", Price: 100, Stock: 5, Status: model.ProductStatusActive, Version: 1}
 		Expect(testDB.Create(&p).Error).To(Succeed())
 		template = model.CouponTemplate{ID: uuid.New(), Name: "Invariant coupon", Type: model.CouponTypeFixed, DiscountValue: 10, TotalQty: 10, RemainingQty: 10, PerUserLimit: 1, StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive}
 		Expect(testDB.Create(&template).Error).To(Succeed())

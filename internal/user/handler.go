@@ -18,7 +18,7 @@ type Handler struct {
 }
 
 type RegisterDTO struct {
-	ShopName        string `json:"shop_name" binding:"max=128"`
+	SellerName      string `json:"seller_name" binding:"max=128"`
 	ApplicationNote string `json:"application_note" binding:"max=1000"`
 	UserName        string `json:"user_name" binding:"required,min=3,max=30"`
 	Email           string `json:"email" binding:"required,email"`
@@ -50,7 +50,7 @@ func (h *Handler) register(c *gin.Context, userType model.UserType) {
 	)
 
 	err := h.userSvc.Register(ctx, &RegisterInput{
-		UserType: userType, ShopName: registerDTO.ShopName, ApplicationNote: registerDTO.ApplicationNote,
+		UserType: userType, SellerName: registerDTO.SellerName, ApplicationNote: registerDTO.ApplicationNote,
 		UserName: registerDTO.UserName,
 		Email:    registerDTO.Email,
 		Password: registerDTO.Password,

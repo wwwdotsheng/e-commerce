@@ -1,4 +1,4 @@
-h1:2n97Vf1108lJxrgjUGmpfTfwJQkedcnclTKVZ5ualJk=
+h1:BU3vTE1DUf4pwFR1JH/InjorfU8z0qs1T8k6MzRkDvw=
 20260130024531.sql h1:THb3YAM0UweWEybBeXsk5VRDZmtPVF/Ke6/1TSv+GkI=
 20260420100049_initial_uuid_schema.sql h1:kfP6mhVVugm3ACxogqlzgU39PvGTAt3/sqnNUd4crFU=
 20260507035237.sql h1:7/XPOcOihvfN2N+hryOZqcpwP7GMds3PS+SPh6Y81Q4=
@@ -6,3 +6,4 @@ h1:2n97Vf1108lJxrgjUGmpfTfwJQkedcnclTKVZ5ualJk=
 20260615000000_coupon.sql h1:Ufygp4fd01OW47hbtsb2HXc3+Pg2uK/WbeZYh3pfbPw=
 20261011033140_fix_schema_drift.sql h1:MhIrIDyVz7/kplss4hDMgbyotetw2fpsazn6Qv5Ghdk=
 20261031000100_user_registration_review.sql h1:EheMc9RIGUDq8RsMvpiRelQRcV7O+L5wlyC0fClGweM=
+20261031000200_seller_account_identity.sql h1:RTTPr2QqzfDTCHK+qcRWgmXG3X7J1E79TBAbq/hv1ss=

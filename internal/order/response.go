@@ -5,6 +5,8 @@ import (
 )
 
 type OrderItem struct {
+	SellerID       string  `json:"seller_id"`
+	BuyerID        string  `json:"buyer_id"`
 	ID             string  `json:"id"`
 	ProductID      string  `json:"product_id"`
 	Quantity       int     `json:"quantity"`
@@ -27,6 +29,7 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 		total = 0
 	}
 	return &OrderItem{
+		SellerID: o.SellerID.String(), BuyerID: o.UserID.String(),
 		ID:             o.ID.String(),
 		ProductID:      o.ProductId.String(),
 		Quantity:       o.Quantity,

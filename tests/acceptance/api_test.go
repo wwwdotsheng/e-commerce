@@ -126,7 +126,7 @@ func (a *apiClient) register(name string, seller ...bool) account {
 	body := map[string]string{"user_name": name, "email": email, "password": password}
 	if len(seller) > 0 && seller[0] {
 		path = "/api/v1/user/register/seller"
-		body["shop_name"] = name
+		body["seller_name"] = name
 		body["application_note"] = "Acceptance test seller"
 	}
 	a.business("POST", path, "", body, errno.OK.FullCode())
@@ -216,12 +216,15 @@ func TestKubernetesBusinessFlow(t *testing.T) {
 	var productID string
 	for page := 1; page <= 100 && productID == ""; page++ {
 		list := decode[struct {
-			Products []struct{ ID, Name, Publisher string }
-			Total    int64
+			Products []struct {
+				ID, Name string
+				SellerID string `json:"seller_id"`
+			}
+			Total int64
 		}](t,
 			a.business("GET", fmt.Sprintf("/api/v1/product/list?page_num=%d&page_size=20", page), seller.Token, nil, errno.OK.FullCode()))
 		for _, p := range list.Products {
-			if p.Name == productName && p.Publisher == seller.ID {
+			if p.Name == productName && p.SellerID == seller.ID {
 				productID = p.ID
 			}
 		}

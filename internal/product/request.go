@@ -10,7 +10,6 @@ type CreateProductBody struct {
 	Price       float64              `json:"price" binding:"required,gt=0"`
 	Status      *model.ProductStatus `json:"status" binding:"required,oneof=active inactive"`
 	Stock       int                  `json:"stock" binding:"required,gte=0"`
-	ShopID      *string              `json:"shop_id"`
 }
 
 type UriWithProductID struct {
@@ -32,10 +31,10 @@ type UpdateProductStatusBody struct {
 }
 
 type SearchProductsQuery struct {
+	SellerID string   `form:"seller_id" binding:"omitempty,uuid"`
 	Query    string   `form:"q"`
 	MinPrice *float64 `form:"min_price"`
 	MaxPrice *float64 `form:"max_price"`
 	PageNum  int      `form:"page_num" binding:"required,gt=0"`
 	PageSize int      `form:"page_size" binding:"required,max=20"`
-	ShopID   string   `form:"shop_id"`
 }

@@ -32,7 +32,7 @@ const (
 type User struct {
 	UserType        UserType   `gorm:"type:varchar(16);not null;default:buyer"`
 	Status          UserStatus `gorm:"type:varchar(16);not null;default:active"`
-	ShopName        string     `gorm:"type:varchar(128);not null;default:''"`
+	SellerName      string     `gorm:"type:varchar(128);not null;default:''"`
 	ApplicationNote string     `gorm:"type:varchar(1000);not null;default:''"`
 	ReviewReason    string     `gorm:"type:varchar(1000);not null;default:''"`
 	ReviewedBy      *uuid.UUID `gorm:"type:uuid"`

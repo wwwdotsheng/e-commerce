@@ -23,6 +23,7 @@ const (
 // Order 订单表
 // TODO(10)[2026-05-04] 使得订单表字段不用与Product表绑定
 type Order struct {
+	SellerID       uuid.UUID   `gorm:"column:seller_id;type:uuid;not null;index"`
 	ID             uuid.UUID   `gorm:"column:id;primaryKey;type:uuid"`
 	UserID         uuid.UUID   `gorm:"column:user_id;type:uuid"`
 	ProductId      uuid.UUID   `gorm:"column:product_id;type:uuid"`

@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
+	"errors"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/google/uuid"
@@ -11,15 +12,10 @@ import (
 	"gorm.io/gorm"
 )
 
-type shopRow struct {
-	ID   uuid.UUID `gorm:"column:id"`
-	Name string    `gorm:"column:name"`
-}
-
 type Service struct {
-	db    *gorm.DB
-	repo  *Repository
-	es    *searchRepo
+	db   *gorm.DB
+	repo *Repository
+	es   *searchRepo
 }
 
 func NewService(db *gorm.DB, repo *Repository, esClient *elasticsearch.Client, logger *zap.Logger) *Service {
@@ -45,14 +41,24 @@ func (svc *Service) GetProduct(ctx context.Context, id uuid.UUID) (*model.Produc
 }
 
 func (svc *Service) CreateProduct(ctx context.Context, param CreateProductParam) error {
+	var seller model.User
+	if err := svc.db.WithContext(ctx).First(&seller, "id = ?", param.SellerID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errno.ErrAuthNotPermission
+		}
+		return errno.ErrInternalServer.WithRaw(err)
+	}
+	if seller.UserType != model.UserTypeSeller || seller.Status != model.UserStatusActive {
+		return errno.ErrAuthNotPermission
+	}
+
 	p, err := svc.repo.CreateProduct(ctx, CreateProductData{
 		Name:        param.Name,
 		Description: param.Description,
 		Price:       param.Price,
 		Status:      param.Status,
 		Stock:       param.Stock,
-		Publisher:   param.Publisher,
-		ShopID:      param.ShopID,
+		SellerID:    param.SellerID,
 	})
 	if err != nil {
 		return err
@@ -70,33 +76,30 @@ func (svc *Service) ListProducts(ctx context.Context, param ListProductsParam) (
 	})
 }
 
-func (svc *Service) ResolveShopNames(ctx context.Context, products []*model.Product) map[string]string {
-	ids := make([]uuid.UUID, 0)
+func (svc *Service) ResolveSellerNames(ctx context.Context, products []*model.Product) (map[string]string, error) {
+	ids := make([]uuid.UUID, 0, len(products))
 	for _, p := range products {
-		if p.ShopID != nil {
-			ids = append(ids, *p.ShopID)
-		}
+		ids = append(ids, p.SellerID)
 	}
+	names := make(map[string]string)
 	if len(ids) == 0 {
-		return nil
+		return names, nil
 	}
-
-	var rows []shopRow
-	if err := svc.db.WithContext(ctx).Model(&model.Shop{}).Where("id IN ?", ids).Find(&rows).Error; err != nil {
-		return nil
+	var users []model.User
+	if err := svc.db.WithContext(ctx).Select("id", "seller_name").Where("id IN ?", ids).Find(&users).Error; err != nil {
+		return nil, err
 	}
-	m := make(map[string]string, len(rows))
-	for _, r := range rows {
-		m[r.ID.String()] = r.Name
+	for _, u := range users {
+		names[u.ID.String()] = u.SellerName
 	}
-	return m
+	return names, nil
 }
 
 func (svc *Service) SearchProducts(ctx context.Context, param SearchProductsParam) (*SearchProductsResult, error) {
 	if svc.es == nil {
 		return &SearchProductsResult{Products: []Item{}, Total: 0}, nil
 	}
-	ids, total, err := svc.es.search(ctx, param.Query, param.MinPrice, param.MaxPrice, param.PageNum, param.PageSize, param.ShopID)
+	ids, total, err := svc.es.search(ctx, param.Query, param.MinPrice, param.MaxPrice, param.PageNum, param.PageSize, param.SellerID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +113,10 @@ func (svc *Service) SearchProducts(ctx context.Context, param SearchProductsPara
 		return nil, err
 	}
 
-	shopNames := svc.ResolveShopNames(ctx, products)
+	sellerNames, err := svc.ResolveSellerNames(ctx, products)
+	if err != nil {
+		return nil, err
+	}
 
 	// 按 ES 返回的顺序排列
 	order := make(map[string]int, len(ids))
@@ -119,10 +125,7 @@ func (svc *Service) SearchProducts(ctx context.Context, param SearchProductsPara
 	}
 	ordered := make([]Item, len(products))
 	for _, p := range products {
-		sn := ""
-		if p.ShopID != nil {
-			sn = shopNames[p.ShopID.String()]
-		}
+		sn := sellerNames[p.SellerID.String()]
 		idx := order[p.ID.String()]
 		ordered[idx] = *FormatItem(p, sn)
 	}
@@ -133,7 +136,7 @@ func (svc *Service) SearchProducts(ctx context.Context, param SearchProductsPara
 func (svc *Service) DeleteProduct(ctx context.Context, param DeleteProductParam) error {
 	err := svc.repo.Update(ctx, UpdateProductPropertyData{
 		ProductID: param.ProductID,
-		Publisher: param.Publisher,
+		SellerID:  param.SellerID,
 		Data: map[string]interface{}{
 			"status": model.ProductStatusInactive,
 		},
@@ -158,7 +161,7 @@ func (svc *Service) UpdateProductProperty(ctx context.Context, param UpdateProdu
 
 	err := svc.repo.Update(ctx, UpdateProductPropertyData{
 		ProductID: param.ProductID,
-		Publisher: param.Publisher,
+		SellerID:  param.SellerID,
 		Data:      updateData,
 	})
 	if err == nil && svc.es != nil {
@@ -177,7 +180,7 @@ func (svc *Service) UpdateProductStatus(ctx context.Context, param UpdateProduct
 	}
 	return svc.repo.Update(ctx, UpdateProductPropertyData{
 		ProductID: param.ProductID,
-		Publisher: param.Publisher,
+		SellerID:  param.SellerID,
 		Data: map[string]interface{}{
 			"status": param.Status,
 		},
@@ -187,7 +190,7 @@ func (svc *Service) UpdateProductStatus(ctx context.Context, param UpdateProduct
 func (svc *Service) UpdateProductStock(ctx context.Context, param UpdateProductStockParam) error {
 	return svc.repo.UpdateStock(ctx, UpdateStockData{
 		ProductID: param.ProductID,
-		Publisher: param.Publisher,
+		SellerID:  param.SellerID,
 		Quantity:  param.Quantity,
 		Reason:    param.Reason,
 	})

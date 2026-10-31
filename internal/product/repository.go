@@ -27,8 +27,7 @@ type CreateProductData struct {
 	Price       float64
 	Status      *model.ProductStatus
 	Stock       int
-	Publisher   uuid.UUID
-	ShopID      *uuid.UUID
+	SellerID    uuid.UUID
 }
 
 func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductData) (*model.Product, error) {
@@ -38,8 +37,7 @@ func (repo *Repository) CreateProduct(ctx context.Context, data CreateProductDat
 	}
 
 	p := &model.Product{
-		Publisher:   data.Publisher,
-		ShopID:      data.ShopID,
+		SellerID:    data.SellerID,
 		Name:        data.Name,
 		Description: data.Description,
 		Price:       data.Price,
@@ -80,7 +78,7 @@ func (repo *Repository) GetProduct(ctx context.Context, id uuid.UUID) (*model.Pr
 
 type UpdateStockData struct {
 	ProductID uuid.UUID
-	Publisher uuid.UUID
+	SellerID  uuid.UUID
 	Quantity  int
 	Reason    model.StockChangeReason
 }
@@ -96,9 +94,9 @@ func (repo *Repository) createStockChangeLog(ctx context.Context, productID uuid
 	}).Error
 }
 
-// UpdateStock 更新商品库存（校验 publisher）
+// UpdateStock 更新商品库存（校验 seller_id）
 func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) error {
-	db := repo.GetDB(ctx).Model(&model.Product{}).Where("id = ? and publisher = ?", data.ProductID, data.Publisher)
+	db := repo.GetDB(ctx).Model(&model.Product{}).Where("id = ? and seller_id = ?", data.ProductID, data.SellerID)
 	if data.Quantity < 0 {
 		db = db.Where("stock >= ?", -data.Quantity)
 	}
@@ -129,7 +127,7 @@ func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) e
 	return repo.createStockChangeLog(ctx, data.ProductID, data.Quantity, result.Stock-data.Quantity, data.Reason)
 }
 
-// DeductStock 下单扣减库存（无 publisher 校验，事务内使用）
+// DeductStock 下单扣减库存（无 seller_id 校验，事务内使用）
 func (repo *Repository) DeductStock(ctx context.Context, productID uuid.UUID, quantity int) error {
 	var updated model.Product
 	// RETURNING populates the model directly. Scan would run a second SELECT
@@ -189,7 +187,7 @@ func (repo *Repository) ListProducts(ctx context.Context, data ListProductsData)
 
 	err := baseQuery.
 		Session(&gorm.Session{}).
-		Select([]string{"id", "publisher", "shop_id", "name", "price", "status", "created_at"}).
+		Select([]string{"id", "seller_id", "name", "price", "status", "created_at"}).
 		Offset((data.PageNum - 1) * data.PageSize).
 		Limit(data.PageSize).
 		Order("created_at DESC").
@@ -200,7 +198,7 @@ func (repo *Repository) ListProducts(ctx context.Context, data ListProductsData)
 
 type UpdateProductPropertyData struct {
 	ProductID uuid.UUID
-	Publisher uuid.UUID
+	SellerID  uuid.UUID
 	Data      map[string]interface{}
 }
 
@@ -226,7 +224,14 @@ func (repo *Repository) Update(ctx context.Context, data UpdateProductPropertyDa
 
 	data.Data["updated_at"] = time.Now()
 
-	return repo.GetDB(ctx).Model(&model.Product{}).
-		Where("id = ? and publisher = ?", data.ProductID, data.Publisher).
-		Updates(data.Data).Error
+	result := repo.GetDB(ctx).Model(&model.Product{}).
+		Where("id = ? and seller_id = ?", data.ProductID, data.SellerID).
+		Updates(data.Data)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errno.ErrProductNotFound
+	}
+	return nil
 }

@@ -10,7 +10,7 @@ import (
 )
 
 type sellerApplicationBody struct {
-	ShopName        string `json:"shop_name" binding:"required,max=128"`
+	SellerName      string `json:"seller_name" binding:"required,max=128"`
 	ApplicationNote string `json:"application_note" binding:"required,max=1000"`
 }
 
@@ -26,7 +26,7 @@ func (h *Handler) ResubmitSellerApplication(c *gin.Context) {
 		return
 	}
 	a := identity.GetAccountInfo(c.Request.Context())
-	response.Write(c, h.userSvc.ResubmitSellerApplication(c.Request.Context(), a.AccountId, body.ShopName, body.ApplicationNote), nil)
+	response.Write(c, h.userSvc.ResubmitSellerApplication(c.Request.Context(), a.AccountId, body.SellerName, body.ApplicationNote), nil)
 }
 func (h *Handler) ListSellerApplications(c *gin.Context) {
 	var query struct {

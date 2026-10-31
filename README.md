@@ -92,9 +92,6 @@ k8s/                    Kubernetes 部署清单
 | POST | `/api/v1/coupon/grant` | 领取优惠券 |
 | GET | `/api/v1/coupon/list` | 我的优惠券 |
 | POST | `/api/v1/wallet/deposit` | 钱包充值 |
-| POST | `/api/v1/shop/create` | 创建店铺 |
-| GET | `/api/v1/shop/list` | 店铺列表 |
-| GET | `/api/v1/shop/:id` | 店铺详情 |
 
 ## 测试
 
@@ -142,3 +139,5 @@ kubectl apply -k k8s/overlays/production
 MIT
 
 认证使用 43 字符的安全随机令牌，由 Redis 保存会话并校验有效期。由 JWT 升级后需重新登录。`APP_AUTH_TOKEN_SECRET` 仅保留配置兼容性，不再参与鉴权；访问令牌和刷新令牌的有效期仍可分别配置。
+
+商家账号审核通过后即可直接发布商品，无需独立创建店铺；商品及订单通过 `seller_id` 关联商家。商家资料使用 `seller_name`、`application_note`，详见 `docs/user-registration-review.md`。

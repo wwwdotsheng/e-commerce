@@ -12,12 +12,11 @@ type CreateProductParam struct {
 	Price       float64
 	Status      *model.ProductStatus
 	Stock       int
-	Publisher   uuid.UUID
-	ShopID      *uuid.UUID
+	SellerID    uuid.UUID
 }
 type UpdateProductStatusParam struct {
 	ProductID uuid.UUID
-	Publisher uuid.UUID
+	SellerID  uuid.UUID
 	Status    model.ProductStatus
 }
 
@@ -28,12 +27,12 @@ type ListProductsParam struct {
 
 type DeleteProductParam struct {
 	ProductID uuid.UUID
-	Publisher uuid.UUID
+	SellerID  uuid.UUID
 }
 
 type UpdateProductPropertyParam struct {
 	ProductID   uuid.UUID
-	Publisher   uuid.UUID
+	SellerID    uuid.UUID
 	Name        *string
 	Description *string
 	Price       *float64
@@ -41,18 +40,18 @@ type UpdateProductPropertyParam struct {
 
 type UpdateProductStockParam struct {
 	ProductID uuid.UUID
-	Publisher uuid.UUID
+	SellerID  uuid.UUID
 	Quantity  int
 	Reason    model.StockChangeReason
 }
 
 type SearchProductsParam struct {
+	SellerID *uuid.UUID
 	Query    string
 	MinPrice *float64
 	MaxPrice *float64
 	PageNum  int
 	PageSize int
-	ShopID   *uuid.UUID
 }
 
 type SearchProductsResult struct {
