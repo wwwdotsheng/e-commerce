@@ -6,6 +6,7 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/coupon"
 	"e-commerce/internal/middleware"
+	"e-commerce/internal/model"
 	"e-commerce/internal/order"
 	"e-commerce/internal/product"
 	"e-commerce/internal/shop"
@@ -127,7 +128,15 @@ func SetupRouter(
 			POST("/fetch-access-token", h.FetchAccessToken)
 
 		userH := user.NewHandler(userSvc, authSvc)
-		v1.POST("/user/register", userH.Register)
+		v1.POST("/user/register/buyer", userH.RegisterBuyer)
+		v1.POST("/user/register/seller", userH.RegisterSeller)
+		users := v1.Group("/user").Use(accessTokenAuthMiddleware)
+		users.GET("/me", userH.GetCurrentAccount)
+		users.PATCH("/seller-application", userH.ResubmitSellerApplication)
+		admin := v1.Group("/admin").Use(accessTokenAuthMiddleware, middleware.RequireUserType(model.UserTypeAdmin))
+		admin.GET("/seller-applications", userH.ListSellerApplications)
+		admin.GET("/seller-applications/:id", userH.GetSellerApplication)
+		admin.POST("/seller-applications/:id/review", userH.ReviewSellerApplication)
 		v1.Group("/user").Use(accessTokenAuthMiddleware).GET("/good")
 
 		walletH := wallet.NewHandler(walletSvc)
@@ -136,18 +145,18 @@ func SetupRouter(
 
 		productH := product.NewHandler(productSvc)
 		productGroup := v1.Group("/product").Use(accessTokenAuthMiddleware)
-		productGroup.POST("/create", productH.CreateProduct)
+		productGroup.POST("/create", middleware.RequireUserType(model.UserTypeSeller), productH.CreateProduct)
 		productGroup.GET("/list", productH.ListProducts)
 		productGroup.GET("/:id", productH.GetProduct)
-		productGroup.PATCH("/:id", productH.UpdateProductProperty)
-		productGroup.POST("/:id/status", productH.UpdateProductStatus)
-		productGroup.DELETE("/:id", productH.DeleteProduct)
+		productGroup.PATCH("/:id", middleware.RequireUserType(model.UserTypeSeller), productH.UpdateProductProperty)
+		productGroup.POST("/:id/status", middleware.RequireUserType(model.UserTypeSeller), productH.UpdateProductStatus)
+		productGroup.DELETE("/:id", middleware.RequireUserType(model.UserTypeSeller), productH.DeleteProduct)
 
 		v1.GET("/product/search", productH.SearchProducts)
 
 		orderH := order.NewHandler(orderSvc)
 		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
-		orderGroup.POST("/create", orderH.CreateOrder)
+		orderGroup.POST("/create", middleware.RequireUserType(model.UserTypeBuyer), orderH.CreateOrder)
 		orderGroup.GET("/list", orderH.ListOrders)
 
 		couponGroup := v1.Group("/coupon").Use(accessTokenAuthMiddleware)
@@ -156,7 +165,7 @@ func SetupRouter(
 		couponGroup.GET("/list", couponH.ListUserCoupons)
 
 		shopGroup := v1.Group("/shop").Use(accessTokenAuthMiddleware)
-		shopGroup.POST("/create", shopH.CreateShop)
+		shopGroup.POST("/create", middleware.RequireUserType(model.UserTypeSeller), shopH.CreateShop)
 		shopGroup.GET("/list", shopH.ListShops)
 		shopGroup.GET("/:id", shopH.GetShop)
 	}

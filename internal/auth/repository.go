@@ -185,3 +185,9 @@ func (repo *Repository) verifyOpaqueToken(ctx context.Context, token string, kin
 	}
 	return &identity.AccountInfo{AccountId: id, SessionID: values[1]}, nil
 }
+
+func (repo *Repository) FindUserByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
+	var user model.User
+	err := repo.db.WithContext(ctx).First(&user, "id = ?", id).Error
+	return &user, err
+}

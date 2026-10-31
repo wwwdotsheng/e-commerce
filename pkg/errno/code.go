@@ -1,6 +1,8 @@
 package errno
 
 var (
+	ErrSellerApplicationState = &Errno{Type: "A", Domain: "01", Code: "104", Message: "申请状态不允许此操作"}
+
 	OK = &Errno{Type: "0", Domain: "00", Code: "000", Message: "OK"}
 
 	ErrInvalidParam   = &Errno{Type: "A", Domain: "00", Code: "001", Message: "提交参数非法"}

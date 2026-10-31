@@ -53,9 +53,10 @@ var _ = Describe("ShopApi", Ordered, func() {
 			"email":     shopEmail,
 			"password":  "test123456",
 		})
-		regReq, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewBuffer(regBody))
+		regReq, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register/buyer", bytes.NewBuffer(regBody))
 		regReq.Header.Set("Content-Type", "application/json")
 		testRouter.ServeHTTP(httptest.NewRecorder(), regReq)
+		Expect(testDB.Table("users").Where("email = ?", shopEmail).Updates(map[string]interface{}{"user_type": "seller", "status": "active"}).Error).To(Succeed())
 
 		_, resp := doLogin(shopEmail, "test123456")
 		var loginData struct {

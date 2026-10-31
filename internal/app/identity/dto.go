@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"e-commerce/internal/model"
 
 	"github.com/google/uuid"
 )
@@ -11,8 +12,10 @@ type userIdentityCtx struct{}
 var userIdentityCtxKey = userIdentityCtx{}
 
 type AccountInfo struct {
-	AccountId uuid.UUID `json:"account_id"`
-	SessionID string    `json:"session_id"`
+	UserType  model.UserType   `json:"user_type"`
+	Status    model.UserStatus `json:"status"`
+	AccountId uuid.UUID        `json:"account_id"`
+	SessionID string           `json:"session_id"`
 }
 
 func SetAccountInfo(ctx context.Context, data *AccountInfo) context.Context {

@@ -21,6 +21,7 @@
 #   KUBE_CONFIG           测试环境 kubeconfig（file 变量）
 #   API_TEST_BASE_URL     测试服务 HTTP origin
 #   API_TEST_HOST         Ingress Host（若 URL 使用节点 IP）
+#   API_TEST_ADMIN_TOKEN  业务验收测试审批临时卖家的管理员令牌
 # ═══════════════════════════════════════════════════════════════
 
 stages:
@@ -44,7 +45,7 @@ test:
     - go version
     - go mod download
     - go vet ./...
-    - go test -race ./internal/config ./internal/order
+    - go test -race ./internal/auth ./internal/config ./internal/order
     - go install github.com/onsi/ginkgo/v2/ginkgo
     # The integration suite applies versioned SQL from migrations/ to a disposable
     # PostgreSQL container before exercising the API.

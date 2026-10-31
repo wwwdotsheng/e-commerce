@@ -23,7 +23,7 @@ var _ = Describe("OpaqueTokenLifecycle", func() {
 		name := "opaque_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
 		email := name + "@example.com"
 		payload, _ := json.Marshal(map[string]string{"user_name": name, "email": email, "password": "opaque-test-password"})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewReader(payload))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/user/register/buyer", bytes.NewReader(payload))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		testRouter.ServeHTTP(w, req)

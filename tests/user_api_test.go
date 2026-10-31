@@ -19,7 +19,7 @@ var _ = Describe("UserApi", Ordered, func() {
 			"password":  password,
 		}
 		body, _ := json.Marshal(dto)
-		req, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewBuffer(body))
+		req, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register/buyer", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 

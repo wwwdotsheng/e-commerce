@@ -8,15 +8,19 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type RegisterInput struct {
-	UserName string
-	Email    string
-	Password string
+	UserType        model.UserType
+	ShopName        string
+	ApplicationNote string
+	UserName        string
+	Email           string
+	Password        string
 }
 
 type Service struct {
@@ -30,6 +34,15 @@ func NewService(repository *Repository, walletRepo *wallet.Repository, metrics *
 }
 
 func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err error) {
+	if input.UserType == "" {
+		input.UserType = model.UserTypeBuyer
+	}
+	if input.UserType != model.UserTypeBuyer && input.UserType != model.UserTypeSeller {
+		return errno.ErrInvalidParam
+	}
+	if input.UserType == model.UserTypeSeller && (strings.TrimSpace(input.ShopName) == "" || strings.TrimSpace(input.ApplicationNote) == "") {
+		return errno.ErrInvalidParam
+	}
 	var errCode = MetErrCodeInternal
 	defer func() {
 		if err != nil {
@@ -50,7 +63,12 @@ func (svc *Service) Register(ctx context.Context, input *RegisterInput) (err err
 	span.End()
 
 	if err := database.ExecuteTransaction(ctx, svc.repo.GetDB(ctx), func(txCtx context.Context) error {
+		status := model.UserStatusActive
+		if input.UserType == model.UserTypeSeller {
+			status = model.UserStatusPending
+		}
 		user := &model.User{
+			UserType: input.UserType, Status: status, ShopName: input.ShopName, ApplicationNote: input.ApplicationNote,
 			UserName: input.UserName,
 			Email:    input.Email,
 			Password: string(bytes),

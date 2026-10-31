@@ -4,7 +4,6 @@ package acceptance
 import (
 	"bytes"
 	"e-commerce/pkg/errno"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
@@ -119,30 +118,33 @@ func TestKubernetesSmoke(t *testing.T) {
 
 type account struct{ Token, RefreshToken, ID string }
 
-func (a *apiClient) register(name string) account {
+func (a *apiClient) register(name string, seller ...bool) account {
 	a.t.Helper()
 	email := name + "@example.test"
 	password := uuid.NewString()[:24]
-	a.business("POST", "/api/v1/user/register", "", map[string]string{"user_name": name, "email": email, "password": password}, errno.OK.FullCode())
+	path := "/api/v1/user/register/buyer"
+	body := map[string]string{"user_name": name, "email": email, "password": password}
+	if len(seller) > 0 && seller[0] {
+		path = "/api/v1/user/register/seller"
+		body["shop_name"] = name
+		body["application_note"] = "Acceptance test seller"
+	}
+	a.business("POST", path, "", body, errno.OK.FullCode())
 	login := decode[struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 	}](a.t,
 		a.business("POST", "/api/v1/auth/login", "", map[string]string{"email": email, "password": password}, errno.OK.FullCode()))
-	parts := strings.Split(login.AccessToken, ".")
-	if len(parts) != 3 || login.RefreshToken == "" {
-		a.t.Fatal("login did not return a token pair")
-	}
-	claims, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		a.t.Fatal(err)
+	if len(login.AccessToken) != 43 || login.RefreshToken == "" {
+		a.t.Fatal("login did not return opaque tokens")
 	}
 	id := decode[struct {
-		ID string `json:"account_id"`
-	}](a.t, claims).ID
-	if _, err := uuid.Parse(id); err != nil {
-		a.t.Fatal("invalid account_id claim")
+		ID string `json:"id"`
+	}](a.t, a.business("GET", "/api/v1/user/me", login.AccessToken, nil, errno.OK.FullCode())).ID
+	if len(seller) > 0 && seller[0] {
+		a.business("POST", "/api/v1/admin/seller-applications/"+id+"/review", os.Getenv("API_TEST_ADMIN_TOKEN"), map[string]string{"decision": "approve"}, errno.OK.FullCode())
 	}
+
 	return account{Token: login.AccessToken, RefreshToken: login.RefreshToken, ID: id}
 }
 
@@ -183,7 +185,10 @@ func TestKubernetesBusinessFlow(t *testing.T) {
 	}
 	runID := "e2e_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 	t.Logf("test data prefix: %s (accounts/orders/coupons retained; no deletion APIs)", runID)
-	seller, buyer := a.register(runID+"_s"), a.register(runID+"_b")
+	if os.Getenv("API_TEST_ADMIN_TOKEN") == "" {
+		t.Fatal("API_TEST_ADMIN_TOKEN is required to approve the isolated seller account")
+	}
+	seller, buyer := a.register(runID+"_s", true), a.register(runID+"_b")
 	t.Cleanup(func() {
 		for _, u := range []account{seller, buyer} {
 			r := decode[envelope](t, a.request("POST", "/api/v1/auth/logout", u.Token, nil))

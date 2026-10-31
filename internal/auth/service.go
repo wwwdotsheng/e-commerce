@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"e-commerce/internal/app/identity"
 	"e-commerce/internal/config"
+	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
 	"encoding/base64"
 	"errors"
@@ -69,6 +70,18 @@ func (svc *Service) VerifyToken(ctx context.Context, userToken string, tokenType
 	if err != nil {
 		return nil, errno.ErrInternalServer.WithRaw(err)
 	}
+	user, err := svc.repo.FindUserByID(ctx, account.AccountId)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errno.ErrAuthInvalidToken
+	}
+	if err != nil {
+		return nil, errno.ErrInternalServer.WithRaw(err)
+	}
+	if user.Status == model.UserStatusDisabled {
+		_ = svc.repo.DelSession(ctx, account.AccountId, account.SessionID)
+		return nil, errno.ErrAuthNotPermission
+	}
+	account.UserType, account.Status = user.UserType, user.Status
 	return account, nil
 }
 
@@ -94,6 +107,9 @@ func (svc *Service) Login(ctx context.Context, input *LoginInput) (*TokenPair, e
 		return nil, errno.ErrUserNotFound
 	}
 
+	if user.Status == model.UserStatusDisabled {
+		return nil, errno.ErrAuthNotPermission
+	}
 	sid, err := genSessionId()
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package user
 
 import (
 	"e-commerce/internal/auth"
+	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/response"
 	"e-commerce/pkg/clog"
 
@@ -17,16 +18,20 @@ type Handler struct {
 }
 
 type RegisterDTO struct {
-	UserName string `json:"user_name" binding:"required,min=3,max=32"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8,max=32"`
+	ShopName        string `json:"shop_name" binding:"max=128"`
+	ApplicationNote string `json:"application_note" binding:"max=1000"`
+	UserName        string `json:"user_name" binding:"required,min=3,max=30"`
+	Email           string `json:"email" binding:"required,email"`
+	Password        string `json:"password" binding:"required,min=8,max=32"`
 }
 
 func NewHandler(userSvc *Service, authSvc *auth.Service) *Handler {
 	return &Handler{userSvc: userSvc, authSvc: authSvc}
 }
 
-func (h *Handler) Register(c *gin.Context) {
+func (h *Handler) RegisterBuyer(c *gin.Context)  { h.register(c, model.UserTypeBuyer) }
+func (h *Handler) RegisterSeller(c *gin.Context) { h.register(c, model.UserTypeSeller) }
+func (h *Handler) register(c *gin.Context, userType model.UserType) {
 	ctx := c.Request.Context()
 	tracer := otel.Tracer("user-handler")
 	ctx, span := tracer.Start(ctx, "RegisterOperation")
@@ -45,6 +50,7 @@ func (h *Handler) Register(c *gin.Context) {
 	)
 
 	err := h.userSvc.Register(ctx, &RegisterInput{
+		UserType: userType, ShopName: registerDTO.ShopName, ApplicationNote: registerDTO.ApplicationNote,
 		UserName: registerDTO.UserName,
 		Email:    registerDTO.Email,
 		Password: registerDTO.Password,

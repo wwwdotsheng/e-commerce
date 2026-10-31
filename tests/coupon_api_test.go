@@ -78,7 +78,7 @@ var _ = Describe("CouponApi", Ordered, func() {
 			"email":     couponEmail,
 			"password":  "test123456",
 		})
-		regReq, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register", bytes.NewBuffer(regBody))
+		regReq, _ := http.NewRequest(http.MethodPost, "/api/v1/user/register/buyer", bytes.NewBuffer(regBody))
 		regReq.Header.Set("Content-Type", "application/json")
 		testRouter.ServeHTTP(httptest.NewRecorder(), regReq)
 

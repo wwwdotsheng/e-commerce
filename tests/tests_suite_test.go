@@ -73,7 +73,7 @@ var _ = BeforeSuite(func() {
 	}
 
 	// The integration suite applies the same checked-in SQL migrations used by deployments.
-	// TOKEN_SECRET is required by config validation; this value is for disposable tests only.
+	// Legacy token_secret remains accepted for configuration compatibility.
 	if os.Getenv("APP_AUTH_TOKEN_SECRET") == "" {
 		os.Setenv("APP_AUTH_TOKEN_SECRET", "test-only-token-secret")
 	}
