@@ -6,10 +6,11 @@ import (
 )
 
 type OrderItem struct {
-	PayableAmount   float64    `json:"payable_amount"`
-	PaymentDeadline time.Time  `json:"payment_deadline"`
-	PaidAt          *time.Time `json:"paid_at"`
-	ClosedAt        *time.Time `json:"closed_at"`
+	CloseReason     *model.OrderCloseReason `json:"close_reason"`
+	PayableAmount   float64                 `json:"payable_amount"`
+	PaymentDeadline time.Time               `json:"payment_deadline"`
+	PaidAt          *time.Time              `json:"paid_at"`
+	ClosedAt        *time.Time              `json:"closed_at"`
 
 	SellerID       string  `json:"seller_id"`
 	BuyerID        string  `json:"buyer_id"`
@@ -31,6 +32,7 @@ type ListOrdersResponse struct {
 
 func FormatOrderItem(o *model.Order) *OrderItem {
 	return &OrderItem{
+		CloseReason:   o.CloseReason,
 		PayableAmount: o.PayableAmount, PaymentDeadline: o.PaymentDeadline, PaidAt: o.PaidAt, ClosedAt: o.ClosedAt,
 		SellerID: o.SellerID.String(), BuyerID: o.UserID.String(),
 		ID:             o.ID.String(),

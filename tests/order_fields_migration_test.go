@@ -46,4 +46,39 @@ var _ = Describe("订单字段迁移", func() {
 			return nil
 		})).To(Succeed())
 	})
+	It("关闭原因迁移只为超时订单回填payment_timeout", func() {
+		sql, err := os.ReadFile("../migrations/20261101000100_order_close_reason.sql")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(testDB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec(`CREATE TEMP TABLE orders (id uuid PRIMARY KEY,status smallint NOT NULL) ON COMMIT DROP`).Error; err != nil {
+				return err
+			}
+			for status := 0; status <= 3; status++ {
+				if err := tx.Exec("INSERT INTO orders(id,status) VALUES (?,?)", uuid.New(), status).Error; err != nil {
+					return err
+				}
+			}
+			if err := tx.Exec(string(sql)).Error; err != nil {
+				return err
+			}
+			var rows []struct {
+				Status      int
+				CloseReason *string
+			}
+			if err := tx.Raw("SELECT status,close_reason FROM orders ORDER BY status").Scan(&rows).Error; err != nil {
+				return err
+			}
+			Expect(rows).To(HaveLen(4))
+			for _, r := range rows {
+				if r.Status == 3 {
+					Expect(r.CloseReason).NotTo(BeNil())
+					Expect(*r.CloseReason).To(Equal("payment_timeout"))
+				} else {
+					Expect(r.CloseReason).To(BeNil())
+				}
+			}
+			return nil
+		})).To(Succeed())
+	})
+
 })

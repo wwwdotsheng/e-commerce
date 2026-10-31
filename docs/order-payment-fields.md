@@ -1,6 +1,6 @@
 # 订单金额与时间字段
 
-订单新增 `payable_amount`、`payment_deadline`、`paid_at`、`closed_at`，本次不增加 `close_reason`。
+订单新增 `payable_amount`、`payment_deadline`、`paid_at`、`closed_at`，并增加可为空的 `close_reason`。
 
 - 下单时将优惠金额统一保留两位小数，并计算、保存应付金额：商品快照单价 × 数量 − 优惠金额，最低为0。不改变优惠可以超过商品总额的现有规则。
 - `payment_deadline` 使用下单时间加当前 `order_mq.ttl_ms`，与现有延迟队列的支付等待时长配置一致。重复下单请求不延长原订单截止时间。
@@ -11,3 +11,5 @@
 迁移会依据历史快照计算并回填 `payable_amount`。历史记录没有保存原始支付时长，`payment_deadline` 按原默认30秒补齐；历史 `paid_at` 和 `closed_at` 保持 null，不伪造事件时间。新订单使用实际运行配置。
 
 本次没有新增支付、退款或扫描恢复任务，没有调整既有订单状态定义。
+
+`close_reason` 使用代码字符串枚举及数据库 `varchar(32)`，当前仅支持 `payment_timeout`。未关闭订单返回 null，超时关闭与状态、关闭时间在同一事务写入；历史超时订单按 status=3 回填原因，其他历史订单保持 null。不增加主动取消原因。

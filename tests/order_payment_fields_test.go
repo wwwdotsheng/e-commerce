@@ -52,6 +52,7 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(order.PaymentDeadline.Sub(order.CreatedAt)).To(Equal(time.Duration(testOrderMQConfig.TTLMs) * time.Millisecond))
 		Expect(order.PaidAt).To(BeNil())
 		Expect(order.ClosedAt).To(BeNil())
+		Expect(order.CloseReason).To(BeNil())
 		Expect(testDB.Model(&product).Updates(map[string]interface{}{"name": "商品改名", "price": 888}).Error).To(Succeed())
 		Expect(invariantRequest(http.MethodPost, "/api/v1/order/create", token, body).Code).To(Equal(errno.OK.FullCode()))
 		var again model.Order
@@ -78,7 +79,7 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(order.DiscountAmount).To(Equal(float64(200)))
 		Expect(order.PayableAmount).To(BeZero())
 	})
-	It("超时关闭保存关闭时间，重复消费不改写该时间", func() {
+	It("超时关闭保存原因和时间，重复消费不覆盖", func() {
 		order, _ := create(10)
 		Expect(testDB.Model(&order).Update("payment_deadline", time.Now().Add(-time.Second)).Error).To(Succeed())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).To(Succeed())
@@ -86,11 +87,14 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(testDB.First(&closed, "id = ?", order.ID).Error).To(Succeed())
 		Expect(closed.Status).To(Equal(model.OrderStatusTimeout))
 		Expect(closed.ClosedAt).NotTo(BeNil())
+		Expect(closed.CloseReason).NotTo(BeNil())
+		Expect(*closed.CloseReason).To(Equal(model.OrderCloseReasonPaymentTimeout))
 		Expect(closed.PaidAt).To(BeNil())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).To(Succeed())
 		var replay model.Order
 		Expect(testDB.First(&replay, "id = ?", order.ID).Error).To(Succeed())
 		Expect(replay.ClosedAt).To(Equal(closed.ClosedAt))
+		Expect(replay.CloseReason).To(Equal(closed.CloseReason))
 		Expect(replay.PayableAmount).To(Equal(order.PayableAmount))
 	})
 	It("已完成订单不会被超时消息补写关闭时间", func() {
@@ -100,6 +104,21 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		var saved model.Order
 		Expect(testDB.First(&saved, "id = ?", order.ID).Error).To(Succeed())
 		Expect(saved.ClosedAt).To(BeNil())
+		Expect(saved.CloseReason).To(BeNil())
 		Expect(saved.PaidAt).To(BeNil())
 	})
+	It("退券失败时关闭原因和关闭时间随事务一起回滚", func() {
+		order, _ := create(10)
+		Expect(testDB.Model(&model.UserCoupon{}).Where("id = ?", order.UserCouponID).Update("status", model.UserCouponStatusUnused).Error).To(Succeed())
+		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).NotTo(Succeed())
+		var saved model.Order
+		Expect(testDB.First(&saved, "id = ?", order.ID).Error).To(Succeed())
+		Expect(saved.Status).To(Equal(model.OrderStatusProcessing))
+		Expect(saved.ClosedAt).To(BeNil())
+		Expect(saved.CloseReason).To(BeNil())
+		var savedProduct model.Product
+		Expect(testDB.First(&savedProduct, "id = ?", product.ID).Error).To(Succeed())
+		Expect(savedProduct.Stock).To(Equal(8))
+	})
+
 })

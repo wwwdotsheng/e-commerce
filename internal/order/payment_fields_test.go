@@ -44,13 +44,17 @@ func TestOrderPaymentResponse(t *testing.T) {
 		if err = json.Unmarshal(raw, &fields); err != nil {
 			t.Fatal(err)
 		}
-		if fields["paid_at"] != nil || fields["closed_at"] != nil {
+		if fields["paid_at"] != nil || fields["closed_at"] != nil || fields["close_reason"] != nil {
 			t.Fatal("未支付、未关闭时必须返回 null")
 		}
 	})
 	t.Run("已支付和已关闭时间原样返回", func(t *testing.T) {
 		now := time.Now()
-		got := FormatOrderItem(&model.Order{PaidAt: &now, ClosedAt: &now})
+		reason := model.OrderCloseReasonPaymentTimeout
+		got := FormatOrderItem(&model.Order{PaidAt: &now, ClosedAt: &now, CloseReason: &reason})
+		if got.CloseReason == nil || *got.CloseReason != model.OrderCloseReasonPaymentTimeout {
+			t.Fatal("关闭原因缺失")
+		}
 		if got.PaidAt == nil || got.ClosedAt == nil || !got.PaidAt.Equal(now) || !got.ClosedAt.Equal(now) {
 			t.Fatal("状态时间缺失")
 		}

@@ -120,9 +120,10 @@ func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUI
 		return nil, nil
 	}
 	closedAt := time.Now()
+	closeReason := model.OrderCloseReasonPaymentTimeout
 	result := repo.GetDB(ctx).Model(&model.Order{}).
 		Where("id = ? AND status = ?", orderID, model.OrderStatusProcessing).
-		Updates(map[string]interface{}{"status": model.OrderStatusTimeout, "closed_at": closedAt})
+		Updates(map[string]interface{}{"status": model.OrderStatusTimeout, "closed_at": closedAt, "close_reason": closeReason})
 	if result.Error != nil {
 		return nil, fmt.Errorf("close timeout order %s: %w", orderID, result.Error)
 	}
@@ -131,6 +132,7 @@ func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUI
 	}
 	o.Status = model.OrderStatusTimeout
 	o.ClosedAt = &closedAt
+	o.CloseReason = &closeReason
 	return &o, nil
 }
 
