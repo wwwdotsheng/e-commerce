@@ -16,7 +16,7 @@ type sellerApplicationBody struct {
 
 func (h *Handler) GetCurrentAccount(c *gin.Context) {
 	a := identity.GetAccountInfo(c.Request.Context())
-	result, err := h.userSvc.GetAccount(c.Request.Context(), a.AccountId)
+	result, err := h.userSvc.GetCurrentAccount(c.Request.Context(), a.AccountId)
 	response.Write(c, err, result)
 }
 func (h *Handler) ResubmitSellerApplication(c *gin.Context) {

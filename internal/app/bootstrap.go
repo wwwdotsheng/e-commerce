@@ -140,6 +140,7 @@ func SetupRouter(
 		walletH := wallet.NewHandler(walletSvc)
 		walletGroup := v1.Group("/wallet").Use(accessTokenAuthMiddleware)
 		walletGroup.POST("/deposit", walletH.Deposit)
+		walletGroup.GET("/balance", walletH.GetBalance)
 
 		productH := product.NewHandler(productSvc)
 		productGroup := v1.Group("/product").Use(accessTokenAuthMiddleware)

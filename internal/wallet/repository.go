@@ -72,3 +72,11 @@ func (repo *Repository) Deposit(ctx context.Context, userID uuid.UUID, sessionID
 		UpdatedAt: time.Now(),
 	}).Error
 }
+
+func (repo *Repository) GetBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+	var account model.UserWallet
+	if err := repo.GetDB(ctx).First(&account, "user_id = ?", userID).Error; err != nil {
+		return 0, err
+	}
+	return account.Balance, nil
+}

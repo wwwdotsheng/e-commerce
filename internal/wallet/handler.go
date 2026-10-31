@@ -54,3 +54,17 @@ func (h *Handler) Deposit(c *gin.Context) {
 
 	response.Write(c, nil, nil)
 }
+
+type BalanceResponse struct {
+	Balance float64 `json:"balance"`
+}
+
+func (h *Handler) GetBalance(c *gin.Context) {
+	account := identity.GetAccountInfo(c.Request.Context())
+	if account == nil {
+		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+	balance, err := h.wallSvc.GetBalance(c.Request.Context(), account.AccountId)
+	response.Write(c, err, BalanceResponse{Balance: balance})
+}

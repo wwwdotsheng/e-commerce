@@ -4,6 +4,7 @@ import (
 	"context"
 	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
+	"errors"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -102,4 +103,25 @@ func (svc *Service) ResubmitSellerApplication(ctx context.Context, id uuid.UUID,
 		return errno.ErrSellerApplicationState
 	}
 	return nil
+}
+
+// AccountProfile exposes only the authenticated account's own balance.
+type AccountProfile struct {
+	ApplicationView
+	Balance float64 `json:"balance"`
+}
+
+func (svc *Service) GetCurrentAccount(ctx context.Context, id uuid.UUID) (*AccountProfile, error) {
+	account, err := svc.GetAccount(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	balance, err := svc.walletRepo.GetBalance(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errno.ErrNotFoundRecord
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &AccountProfile{ApplicationView: *account, Balance: balance}, nil
 }

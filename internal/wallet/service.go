@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 type Service struct {
@@ -52,4 +53,12 @@ func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID str
 		return nil
 	}
 	return err
+}
+
+func (svc *Service) GetBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+	balance, err := svc.walletRepo.GetBalance(ctx, userID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, errno.ErrNotFoundRecord
+	}
+	return balance, err
 }
