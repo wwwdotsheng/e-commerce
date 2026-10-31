@@ -23,6 +23,11 @@ const (
 // Order 订单表
 // TODO(10)[2026-05-04] 使得订单表字段不用与Product表绑定
 type Order struct {
+	PayableAmount   float64    `gorm:"column:payable_amount;type:numeric(16,2);not null;check:payable_amount >= 0"`
+	PaymentDeadline time.Time  `gorm:"column:payment_deadline;type:timestamptz;not null;index"`
+	PaidAt          *time.Time `gorm:"column:paid_at;type:timestamptz"`
+	ClosedAt        *time.Time `gorm:"column:closed_at;type:timestamptz"`
+
 	SellerID       uuid.UUID   `gorm:"column:seller_id;type:uuid;not null;index"`
 	ID             uuid.UUID   `gorm:"column:id;primaryKey;type:uuid"`
 	UserID         uuid.UUID   `gorm:"column:user_id;type:uuid"`

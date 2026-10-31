@@ -2,9 +2,15 @@ package order
 
 import (
 	"e-commerce/internal/model"
+	"time"
 )
 
 type OrderItem struct {
+	PayableAmount   float64    `json:"payable_amount"`
+	PaymentDeadline time.Time  `json:"payment_deadline"`
+	PaidAt          *time.Time `json:"paid_at"`
+	ClosedAt        *time.Time `json:"closed_at"`
+
 	SellerID       string  `json:"seller_id"`
 	BuyerID        string  `json:"buyer_id"`
 	ID             string  `json:"id"`
@@ -24,11 +30,8 @@ type ListOrdersResponse struct {
 }
 
 func FormatOrderItem(o *model.Order) *OrderItem {
-	total := o.SnapshotPrice*float64(o.Quantity) - o.DiscountAmount
-	if total < 0 {
-		total = 0
-	}
 	return &OrderItem{
+		PayableAmount: o.PayableAmount, PaymentDeadline: o.PaymentDeadline, PaidAt: o.PaidAt, ClosedAt: o.ClosedAt,
 		SellerID: o.SellerID.String(), BuyerID: o.UserID.String(),
 		ID:             o.ID.String(),
 		ProductID:      o.ProductId.String(),
@@ -36,7 +39,7 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 		SnapshotTitle:  o.SnapshotTitle,
 		SnapshotPrice:  o.SnapshotPrice,
 		DiscountAmount: o.DiscountAmount,
-		TotalAmount:    total,
+		TotalAmount:    o.PayableAmount,
 		Status:         int(o.Status),
 		CreatedAt:      o.CreatedAt.Format("2006-01-02 15:04:05"),
 	}

@@ -10,6 +10,7 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -119,7 +120,13 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			userCouponID = &couponID
 		}
 
+		discountAmount = math.Round(discountAmount*100) / 100
+		now := time.Now()
 		order = &model.Order{
+			PayableAmount:   calculatePayableAmount(p.Price, param.Quantity, discountAmount),
+			PaymentDeadline: now.Add(time.Duration(svc.repo.mqCfg.TTLMs) * time.Millisecond),
+			CreatedAt:       now,
+
 			SellerID:       p.SellerID,
 			ID:             orderID,
 			UserID:         userID,
@@ -218,4 +225,10 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 
 func (svc *Service) ListOrders(ctx context.Context, param ListOrdersParam) ([]*model.Order, int64, error) {
 	return svc.repo.ListOrdersByUserID(ctx, param.UserID, param.PageNum, param.PageSize)
+}
+
+// calculatePayableAmount fixes the amount at order creation, retaining the zero floor.
+func calculatePayableAmount(unitPrice float64, quantity int, discount float64) float64 {
+	gross := math.Round(unitPrice*float64(quantity)*100) / 100
+	return math.Max(0, math.Round((gross-math.Round(discount*100)/100)*100)/100)
 }

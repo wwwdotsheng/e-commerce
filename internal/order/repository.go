@@ -7,6 +7,7 @@ import (
 	"e-commerce/internal/pkg/database"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
@@ -118,9 +119,10 @@ func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUI
 	if o.Status != model.OrderStatusProcessing {
 		return nil, nil
 	}
+	closedAt := time.Now()
 	result := repo.GetDB(ctx).Model(&model.Order{}).
 		Where("id = ? AND status = ?", orderID, model.OrderStatusProcessing).
-		Update("status", model.OrderStatusTimeout)
+		Updates(map[string]interface{}{"status": model.OrderStatusTimeout, "closed_at": closedAt})
 	if result.Error != nil {
 		return nil, fmt.Errorf("close timeout order %s: %w", orderID, result.Error)
 	}
@@ -128,6 +130,7 @@ func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUI
 		return nil, nil
 	}
 	o.Status = model.OrderStatusTimeout
+	o.ClosedAt = &closedAt
 	return &o, nil
 }
 
