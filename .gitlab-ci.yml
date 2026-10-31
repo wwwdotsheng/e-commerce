@@ -49,6 +49,8 @@ test:
     - go install github.com/onsi/ginkgo/v2/ginkgo
     # The integration suite applies versioned SQL from migrations/ to a disposable
     # PostgreSQL container before exercising the API.
+    # --vv prints every spec (including passing ones) so the Chinese titles are
+    # visible in the job log, not only in the JUnit report tab.
     - |
       APP_AUTH_TOKEN_SECRET=ci-only-token-secret \
       IMAGE_REPOSITORY="${REGISTRY_PREFIX}" \
@@ -56,7 +58,7 @@ test:
       APP_LOG_CONSOLE_LEVEL=error \
       APP_DATABASE_LOG_LEVEL=error \
       CONFIG_PATH=../configs/config.yaml \
-      "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --junit-report=integration.xml --output-dir=test-results ./tests
+      "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --vv --junit-report=integration.xml --output-dir=test-results ./tests
 
   artifacts:
     when: always
