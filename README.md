@@ -49,9 +49,9 @@ internal/
   auth/                 JWT 双 Token 与 Redis 会话管理
   user/                 用户注册
   product/              商品 CRUD、库存、搜索
-  order/                订单创建、超时关单
+  order/                订单创建、详情、余额支付、超时关单
   coupon/               优惠券模板与用户券
-  wallet/               钱包充值
+  wallet/               钱包充值、余额查询与订单资金流水
   middleware/           认证、限流、日志、链路追踪
   model/                GORM 数据模型
   config/               配置加载与校验
@@ -87,10 +87,13 @@ k8s/                    Kubernetes 部署清单
 | DELETE | `/api/v1/product/:id` | 删除商品 |
 | POST | `/api/v1/order/create` | 创建订单 |
 | GET | `/api/v1/order/list` | 订单列表 |
+| GET | `/api/v1/order/:id` | 订单详情（包含退款状态字段） |
+| POST | `/api/v1/order/:id/pay` | 使用账户余额支付订单 |
 | POST | `/api/v1/coupon/template` | 创建优惠券模板 |
 | POST | `/api/v1/coupon/grant` | 领取优惠券 |
 | GET | `/api/v1/coupon/list` | 我的优惠券 |
 | POST | `/api/v1/wallet/deposit` | 钱包充值 |
+| GET | `/api/v1/wallet/balance` | 查询当前账号余额 |
 
 ## 测试
 
@@ -140,3 +143,5 @@ MIT
 认证使用 43 字符的安全随机令牌，由 Redis 保存会话并校验有效期。由 JWT 升级后需重新登录。`APP_AUTH_TOKEN_SECRET` 仅保留配置兼容性，不再参与鉴权；访问令牌和刷新令牌的有效期仍可分别配置。
 
 商家账号审核通过后即可直接发布商品，无需独立创建店铺；商品及订单通过 `seller_id` 关联商家。商家资料使用 `seller_name`、`application_note`，详见 `docs/user-registration-review.md`。
+
+订单支付使用买家账户余额，支付成功即把订单金额记入商家余额；重复支付、余额不足、超时后的处理规则见 `docs/order-payment.md`。

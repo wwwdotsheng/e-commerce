@@ -5,6 +5,7 @@ import (
 	"e-commerce/internal/config"
 	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/database"
+	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
 	"time"
@@ -106,6 +107,51 @@ func (repo *Repository) FindByIdempotencyKey(ctx context.Context, key string) (*
 	var o model.Order
 	err := repo.GetDB(ctx).Where("idempotency_key = ?", key).First(&o).Error
 	return &o, err
+}
+
+// GetOrderByID returns an order only when it belongs to the requesting user.
+func (repo *Repository) GetOrderByID(ctx context.Context, userID, orderID uuid.UUID) (*model.Order, error) {
+	var o model.Order
+	err := repo.GetDB(ctx).
+		Where("id = ? AND user_id = ?", orderID, userID).
+		First(&o).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errno.ErrNotFoundRecord
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query order %s for user %s: %w", orderID, userID, err)
+	}
+	return &o, nil
+}
+
+// GetOrderForUpdateByUser 在支付事务中锁定订单行，并限定订单属于当前买家。
+// 行锁保证支付与超时关闭不会同时推进同一笔订单。
+func (repo *Repository) GetOrderForUpdateByUser(ctx context.Context, userID, orderID uuid.UUID) (*model.Order, error) {
+	var o model.Order
+	err := repo.GetDB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND user_id = ?", orderID, userID).
+		First(&o).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errno.ErrNotFoundRecord
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lock order %s for user %s: %w", orderID, userID, err)
+	}
+	return &o, nil
+}
+
+// MarkOrderPaid 只允许待支付订单转入已支付，重复调用不会覆盖 paid_at。
+func (repo *Repository) MarkOrderPaid(ctx context.Context, orderID uuid.UUID, paidAt time.Time) error {
+	result := repo.GetDB(ctx).Model(&model.Order{}).
+		Where("id = ? AND status = ?", orderID, model.OrderStatusProcessing).
+		Updates(map[string]interface{}{"status": model.OrderStatusPaid, "paid_at": paidAt})
+	if result.Error != nil {
+		return fmt.Errorf("mark order %s paid: %w", orderID, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return errno.ErrOrderPaymentStatusInvalid
+	}
+	return nil
 }
 
 // HandleOrderTimeout runs inside the service transaction. A nil order means

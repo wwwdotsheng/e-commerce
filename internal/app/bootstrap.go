@@ -157,6 +157,9 @@ func SetupRouter(
 		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
 		orderGroup.POST("/create", middleware.RequireUserType(model.UserTypeBuyer), orderH.CreateOrder)
 		orderGroup.GET("/list", orderH.ListOrders)
+		orderGroup.GET("/:id", orderH.GetOrderByID)
+		orderGroup.POST("/:id/pay", middleware.RequireUserType(model.UserTypeBuyer), orderH.PayOrder)
+		orderGroup.POST("/:id/refund", middleware.RequireUserType(model.UserTypeBuyer), orderH.ApplyRefund)
 
 		couponGroup := v1.Group("/coupon").Use(accessTokenAuthMiddleware)
 		couponGroup.POST("/template", couponH.CreateTemplate)
@@ -265,7 +268,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	couponSvc := coupon.NewService(db, couponRepo, couponMetrics)
 	couponH := coupon.NewHandler(couponSvc)
 
-	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, orderMetrics)
+	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {

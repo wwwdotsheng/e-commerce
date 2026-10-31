@@ -18,6 +18,7 @@ var (
 	ErrAuthInvalidToken   = &Errno{Type: "A", Domain: "02", Code: "103", Message: "非法访问"}
 
 	ErrWalletInvalidDepositAmount = &Errno{Type: "A", Domain: "03", Code: "101", Message: "充值金额非法"}
+	ErrWalletBalanceInsufficient  = &Errno{Type: "A", Domain: "03", Code: "102", Message: "账户余额不足"}
 
 	ErrProductStockInsufficient = &Errno{Type: "A", Domain: "04", Code: "101", Message: "库存不足"}
 	ErrProductNotFound          = &Errno{Type: "A", Domain: "04", Code: "102", Message: "商品不存在"}
@@ -25,6 +26,9 @@ var (
 
 	// ErrOrderProductIdNotFound 下单时输入的商品 ID 在系统中无法找到
 	ErrOrderProductIdNotFound = &Errno{Type: "A", Domain: "05", Code: "100", Message: "商品ID不存在"}
+
+	ErrOrderPaymentStatusInvalid = &Errno{Type: "A", Domain: "05", Code: "102", Message: "订单当前状态不可支付"}
+	ErrOrderPaymentExpired       = &Errno{Type: "A", Domain: "05", Code: "103", Message: "订单已超过支付截止时间"}
 
 	ErrInternalServer = &Errno{Type: "B", Domain: "01", Code: "001", Message: "系统繁忙，请稍后重试"}
 	ErrDatabase       = &Errno{Type: "B", Domain: "01", Code: "002", Message: "数据库操作异常"}

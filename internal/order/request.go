@@ -11,3 +11,11 @@ type ListOrdersQuery struct {
 	PageNum  int `form:"page_num" binding:"required,gt=0"`
 	PageSize int `form:"page_size" binding:"required,max=20"`
 }
+
+type UriWithOrderID struct {
+	ID string `uri:"id" binding:"required"`
+}
+
+type ApplyRefundBody struct {
+	IdempotencyKey string `json:"idempotency_key" binding:"required,max=64"`
+}

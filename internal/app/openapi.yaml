@@ -19,7 +19,7 @@ info:
     每个接口特有的业务码在对应接口的 description 中列出。
   version: "1.0"
 servers:
-  - url: http://localhost:8080/api/v1
+  - url: http://localhost:10000/api/v1
     description: Local dev
 
 paths:
@@ -188,6 +188,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProductListResponse'
 
+  /product/search:
+    get:
+      tags: [商品]
+      summary: 搜索商品
+      operationId: SearchProducts
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+        - name: max_price
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - name: shop_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductListResponse'
+
   /product/{id}:
     get:
       tags: [商品]
@@ -346,6 +396,84 @@ paths:
               schema:
                 $ref: '#/components/schemas/OrderListResponse'
 
+  /order/{id}:
+    get:
+      tags: [订单]
+      summary: 订单详情
+      operationId: GetOrderByID
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功返回订单详情；订单不存在或不属于当前用户时返回 A00002
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailResponse'
+
+  /order/{id}/pay:
+    post:
+      tags: [订单]
+      summary: 使用账户余额支付订单
+      description: |
+        买家为自己的待支付订单付款：在同一事务内扣减买家余额、记入商家余额，并把订单转为已支付。
+        重复支付返回已有订单，不重复扣款；已关闭或超过支付截止时间的订单拒绝支付。
+      operationId: PayOrder
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            000000 支付成功，或订单已支付时返回已有结果
+            特有错误：A00002 订单不存在或不属于当前用户、A03102 余额不足
+            A05102 订单当前状态不可支付、A05103 已超过支付截止时间
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailResponse'
+
+  /order/{id}/refund:
+    post:
+      tags: [订单]
+      summary: 申请订单全额退款（接口占位）
+      operationId: ApplyOrderRefund
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyRefundRequest'
+      responses:
+        '200':
+          description: 统一 API 响应；业务逻辑尚未实现
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponse'
+
   /coupon/template:
     post:
       tags: [优惠券]
@@ -421,18 +549,90 @@ paths:
               schema:
                 $ref: '#/components/schemas/UserCouponListResponse'
 
+  /shop/create:
+    post:
+      tags: [店铺]
+      summary: 创建店铺
+      operationId: CreateShop
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShopRequest'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopResponse'
+
+  /shop/list:
+    get:
+      tags: [店铺]
+      summary: 店铺列表
+      operationId: ListShops
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: 店铺列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopListResponse'
+
+  /shop/{id}:
+    get:
+      tags: [店铺]
+      summary: 店铺详情
+      operationId: GetShop
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 店铺详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShopResponse'
+
 components:
   securitySchemes:
     AccessTokenAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: 登录后获取的 access_token
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 粘贴登录返回的 access_token 原值，不要添加 Bearer 前缀
     RefreshTokenAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: 登录时返回的 refresh_token
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 粘贴登录返回的 refresh_token 原值，不要添加 Bearer 前缀
 
   schemas:
     ApiResponse:
@@ -542,6 +742,59 @@ components:
         stock:
           type: integer
           minimum: 0
+        shop_id:
+          type: string
+          format: uuid
+          description: 可选，关联的店铺 ID
+
+    CreateShopRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+
+    ShopItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+
+    ShopResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ShopItem'
+
+    ShopListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                shops:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ShopItem'
+                total:
+                  type: integer
 
     UpdateProductPropertyRequest:
       type: object
@@ -642,6 +895,14 @@ components:
         id:
           type: string
           format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+          description: 买家账号 ID
+        seller_id:
+          type: string
+          format: uuid
+          description: 商家账号 ID，下单时从商品记录获取
         product_id:
           type: string
           format: uuid
@@ -656,13 +917,36 @@ components:
           type: number
           format: float
           description: 优惠券抵扣金额
+        payable_amount:
+          type: number
+          format: float
+          description: 下单时确定并保存的应付金额，最低为 0
         total_amount:
           type: number
           format: float
-          description: 实付金额（snapshot_price * quantity - discount_amount）
+          description: 兼容字段，与 payable_amount 相同
+        payment_deadline:
+          type: string
+          format: date-time
+          description: 支付截止时间，下单时确定，重复下单不延长
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 支付成功时间，未支付时为 null
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 订单关闭时间，未关闭时为 null
+        close_reason:
+          type: string
+          nullable: true
+          enum: [payment_timeout]
+          description: 关闭原因码，仅超时关闭时写入
         status:
           type: integer
-          description: "0=处理中 1=已完成 2=已取消 3=超时"
+          description: "0=处理中 1=已完成 2=已取消 3=超时 4=已支付"
         created_at:
           type: string
           format: date-time
@@ -681,6 +965,63 @@ components:
                     $ref: '#/components/schemas/OrderItem'
                 total:
                   type: integer
+
+    OrderDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '#/components/schemas/OrderItem'
+                - type: object
+                  properties:
+                    refund:
+                      $ref: '#/components/schemas/RefundDetail'
+                    coupon_id:
+                      type: string
+                      format: uuid
+                      description: 使用的用户优惠券 ID；未使用优惠券时省略
+                    updated_at:
+                      type: string
+                      format: date-time
+
+    RefundDetail:
+      type: object
+      nullable: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, confirming]
+        amount:
+          type: number
+          format: float
+        failure_reason:
+          type: string
+          description: 退款明确失败时的原因
+        updated_at:
+          type: string
+          format: date-time
+
+    RefundResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RefundDetail'
+
+    ApplyRefundRequest:
+      type: object
+      required: [idempotency_key]
+      properties:
+        idempotency_key:
+          type: string
+          maxLength: 64
+          description: 退款申请幂等键
 
     # === 优惠券 ===
 

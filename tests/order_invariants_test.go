@@ -101,6 +101,45 @@ var _ = Describe("Order invariants", func() {
 		return o
 	}
 
+	It("returns order details only to the owning user", func() {
+		key := uuid.NewString()
+		Expect(create(key, 2, "").Code).To(Equal(errno.OK.FullCode()))
+		o := findOrder(key)
+
+		resp := invariantRequest(http.MethodGet, "/api/v1/order/"+o.ID.String(), token, nil)
+		Expect(resp.Code).To(Equal(errno.OK.FullCode()))
+		var detail struct {
+			ID             string  `json:"id"`
+			ProductID      string  `json:"product_id"`
+			Quantity       int     `json:"quantity"`
+			SnapshotTitle  string  `json:"snapshot_title"`
+			SnapshotPrice  float64 `json:"snapshot_price"`
+			DiscountAmount float64 `json:"discount_amount"`
+			TotalAmount    float64 `json:"total_amount"`
+			Status         int     `json:"status"`
+			CreatedAt      string  `json:"created_at"`
+			UpdatedAt      string  `json:"updated_at"`
+			Refund         *any    `json:"refund"`
+		}
+		Expect(json.Unmarshal(resp.Data, &detail)).To(Succeed())
+		Expect(detail.ID).To(Equal(o.ID.String()))
+		Expect(detail.ProductID).To(Equal(p.ID.String()))
+		Expect(detail.Quantity).To(Equal(2))
+		Expect(detail.SnapshotTitle).To(Equal(p.Name))
+		Expect(detail.SnapshotPrice).To(Equal(p.Price))
+		Expect(detail.DiscountAmount).To(BeZero())
+		Expect(detail.TotalAmount).To(Equal(p.Price * 2))
+		Expect(detail.Status).To(Equal(int(o.Status)))
+		Expect(detail.CreatedAt).NotTo(BeEmpty())
+		Expect(detail.UpdatedAt).NotTo(BeEmpty())
+		Expect(detail.Refund).To(BeNil())
+
+		otherUserResp := invariantRequest(http.MethodGet, "/api/v1/order/"+o.ID.String(), otherToken, nil)
+		Expect(otherUserResp.Code).To(Equal(errno.ErrNotFoundRecord.FullCode()))
+		missingOrderResp := invariantRequest(http.MethodGet, "/api/v1/order/"+uuid.NewString(), token, nil)
+		Expect(missingOrderResp.Code).To(Equal(errno.ErrNotFoundRecord.FullCode()))
+	})
+
 	It("replays an exhausted-stock order without deducting twice", func() {
 		key := uuid.NewString()
 		Expect(create(key, 5, "").Code).To(Equal(errno.OK.FullCode()))
@@ -339,7 +378,7 @@ var _ = Describe("Order invariants", func() {
 		Expect(repo.SetupMQ(&cfg)).To(Succeed())
 		metrics, err := order.NewMetrics(otel.Meter("mq-invariants"))
 		Expect(err).NotTo(HaveOccurred())
-		svc := order.NewService(testDB, repo, product.NewRepository(testDB), coupon.NewRepository(testDB), metrics)
+		svc := order.NewService(testDB, repo, product.NewRepository(testDB), coupon.NewRepository(testDB), wallet.NewRepository(testDB, testRedis), metrics)
 		Expect(order.NewMqHandler(svc).ListenTimeout(ctx, ch, cfg.ConsumerQueue)).To(Succeed())
 		key := uuid.NewString()
 		Expect(svc.CreateOrder(ctx, buyer.ID, order.CreateOrderParam{ProductID: p.ID, Quantity: 2, IdempotencyKey: key})).To(Succeed())

@@ -14,10 +14,15 @@ const (
 type OrderStatus int
 
 const (
+	// OrderStatusProcessing 已创建、等待买家支付；超过 payment_deadline 后由超时消息关闭。
 	OrderStatusProcessing OrderStatus = 0
-	OrderStatusCompleted  OrderStatus = 1
-	OrderStatusCancelled  OrderStatus = 2
-	OrderStatusTimeout    OrderStatus = 3
+	// OrderStatusCompleted 已履约完成，一期尚未接入履约流程。
+	OrderStatusCompleted OrderStatus = 1
+	OrderStatusCancelled OrderStatus = 2
+	// OrderStatusTimeout 支付超时关闭，close_reason 记录 payment_timeout。
+	OrderStatusTimeout OrderStatus = 3
+	// OrderStatusPaid 余额支付成功，paid_at 同时写入；等待履约或退款。
+	OrderStatusPaid OrderStatus = 4
 )
 
 // OrderCloseReason is a stable reason code persisted as varchar.

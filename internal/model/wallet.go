@@ -11,6 +11,13 @@ const (
 	ConstraintWalletLogIdempotencyKey = "uni_wallet_log_idempotency_key"
 )
 
+// WalletLogType 标识余额变动的来源，amount 带符号：支出为负，收入为正。
+const (
+	WalletLogTypeDeposit      = "deposit"
+	WalletLogTypeOrderPayment = "order_payment"
+	WalletLogTypeOrderIncome  = "order_income"
+)
+
 type UserWallet struct {
 	UserID    uuid.UUID `gorm:"column:user_id;primaryKey;type:uuid"`
 	Balance   float64   `gorm:"column:balance;type:decimal(16,2);not null;default:0"`

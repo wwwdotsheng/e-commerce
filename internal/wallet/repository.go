@@ -17,11 +17,13 @@ import (
 )
 
 var (
-	repoErrDepositRecordAlreadyExists = errors.New("deposit record already exists")
+	repoErrWalletLogAlreadyExists = errors.New("wallet log already exists")
+	// ErrInsufficientBalance 买家钱包余额不足以完成本次扣款。
+	ErrInsufficientBalance = errors.New("wallet balance is insufficient")
 )
 
 var constraintMap = map[string]error{
-	model.ConstraintWalletLogIdempotencyKey: repoErrDepositRecordAlreadyExists,
+	model.ConstraintWalletLogIdempotencyKey: repoErrWalletLogAlreadyExists,
 }
 
 type Repository struct {
@@ -47,17 +49,11 @@ func (repo *Repository) Deposit(ctx context.Context, userID uuid.UUID, sessionID
 		UserID:         userID,
 		SessionID:      sessionID,
 		Amount:         input.Amount,
-		Type:           "deposit",
+		Type:           model.WalletLogTypeDeposit,
 		IdempotencyKey: input.IdempotencyKey,
 	}
-	if err := repo.GetDB(ctx).Create(log).Error; err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.UniqueViolation {
-			if mapErr, exists := constraintMap[pgErr.ConstraintName]; exists {
-				return mapErr
-			}
-		}
-		return fmt.Errorf("execute query error %w", err)
+	if err := repo.createLog(ctx, log); err != nil {
+		return err
 	}
 
 	return repo.GetDB(ctx).Clauses(clause.OnConflict{
@@ -79,4 +75,91 @@ func (repo *Repository) GetBalance(ctx context.Context, userID uuid.UUID) (float
 		return 0, err
 	}
 	return account.Balance, nil
+}
+
+// DebitForOrderPayment 在调用方事务内扣减买家余额并写入一条负数账本。
+// 余额不足时返回 ErrInsufficientBalance，扣款和账本一起回滚。
+func (repo *Repository) DebitForOrderPayment(ctx context.Context, userID uuid.UUID, amount float64, sessionID string, orderID uuid.UUID) error {
+	if amount <= 0 {
+		return nil
+	}
+	log := &model.WalletLog{
+		UserID:         userID,
+		SessionID:      sessionID,
+		Amount:         -amount,
+		Type:           model.WalletLogTypeOrderPayment,
+		IdempotencyKey: orderPaymentLogKey(orderID),
+	}
+	if err := repo.createLog(ctx, log); err != nil {
+		return err
+	}
+
+	result := repo.GetDB(ctx).Model(&model.UserWallet{}).
+		Where("user_id = ? AND balance >= ?", userID, amount).
+		Updates(map[string]interface{}{
+			"balance":    gorm.Expr("user_wallets.balance - ?", amount),
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("debit order payment for user %s: %w", userID, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrInsufficientBalance
+	}
+	return nil
+}
+
+// CreditOrderIncome 在调用方事务内把订单金额记入商家余额，并写入一条正数账本。
+func (repo *Repository) CreditOrderIncome(ctx context.Context, sellerID uuid.UUID, amount float64, sessionID string, orderID uuid.UUID) error {
+	if amount <= 0 {
+		return nil
+	}
+	log := &model.WalletLog{
+		UserID:         sellerID,
+		SessionID:      sessionID,
+		Amount:         amount,
+		Type:           model.WalletLogTypeOrderIncome,
+		IdempotencyKey: orderIncomeLogKey(orderID),
+	}
+	if err := repo.createLog(ctx, log); err != nil {
+		return err
+	}
+
+	result := repo.GetDB(ctx).Model(&model.UserWallet{}).
+		Where("user_id = ?", sellerID).
+		Updates(map[string]interface{}{
+			"balance":    gorm.Expr("user_wallets.balance + ?", amount),
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return fmt.Errorf("credit order income for seller %s: %w", sellerID, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		// 商家账号应随注册创建钱包；缺失说明数据异常，整笔支付回滚。
+		return fmt.Errorf("seller wallet %s not found", sellerID)
+	}
+	return nil
+}
+
+// createLog 依赖 wallet_logs.idempotency_key 唯一索引兜底重复记账。
+func (repo *Repository) createLog(ctx context.Context, log *model.WalletLog) error {
+	if err := repo.GetDB(ctx).Create(log).Error; err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.SQLState() == pgerrcode.UniqueViolation {
+			if mapErr, exists := constraintMap[pgErr.ConstraintName]; exists {
+				return mapErr
+			}
+		}
+		return fmt.Errorf("execute query error %w", err)
+	}
+	return nil
+}
+
+// 订单支付与入账各只有一条账本，订单 ID 即幂等键。
+func orderPaymentLogKey(orderID uuid.UUID) string {
+	return "order:" + orderID.String() + ":payment"
+}
+
+func orderIncomeLogKey(orderID uuid.UUID) string {
+	return "order:" + orderID.String() + ":income"
 }

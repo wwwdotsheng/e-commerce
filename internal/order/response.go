@@ -30,6 +30,21 @@ type ListOrdersResponse struct {
 	Total  int64       `json:"total"`
 }
 
+type RefundDetailResponse struct {
+	ID            string  `json:"id"`
+	Status        string  `json:"status"`
+	Amount        float64 `json:"amount"`
+	FailureReason string  `json:"failure_reason,omitempty"`
+	UpdatedAt     string  `json:"updated_at"`
+}
+
+type OrderDetailResponse struct {
+	OrderItem
+	CouponID  *string               `json:"coupon_id,omitempty"`
+	UpdatedAt string                `json:"updated_at"`
+	Refund    *RefundDetailResponse `json:"refund"`
+}
+
 func FormatOrderItem(o *model.Order) *OrderItem {
 	return &OrderItem{
 		CloseReason:   o.CloseReason,
@@ -44,5 +59,19 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 		TotalAmount:    o.PayableAmount,
 		Status:         int(o.Status),
 		CreatedAt:      o.CreatedAt.Format("2006-01-02 15:04:05"),
+	}
+}
+
+func FormatOrderDetail(o *model.Order) *OrderDetailResponse {
+	var couponID *string
+	if o.UserCouponID != nil {
+		id := o.UserCouponID.String()
+		couponID = &id
+	}
+	return &OrderDetailResponse{
+		OrderItem: *FormatOrderItem(o),
+		CouponID:  couponID,
+		UpdatedAt: o.UpdatedAt.Format("2006-01-02 15:04:05"),
+		Refund:    nil,
 	}
 }

@@ -49,7 +49,7 @@ func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID str
 	err = database.ExecuteTransaction(ctx, svc.walletRepo.GetDB(ctx), func(txCtx context.Context) error {
 		return svc.walletRepo.Deposit(txCtx, UserID, SessionID, input)
 	})
-	if errors.Is(err, repoErrDepositRecordAlreadyExists) {
+	if errors.Is(err, repoErrWalletLogAlreadyExists) {
 		return nil
 	}
 	return err

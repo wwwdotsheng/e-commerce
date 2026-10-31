@@ -6,6 +6,7 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/database"
 	"e-commerce/internal/product"
+	"e-commerce/internal/wallet"
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/errno"
 	"errors"
@@ -23,11 +24,12 @@ type Service struct {
 	repo        *Repository
 	productRepo *product.Repository
 	couponRepo  *coupon.Repository
+	walletRepo  *wallet.Repository
 	metrics     *Metrics
 }
 
-func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository, couponRepo *coupon.Repository, metrics *Metrics) *Service {
-	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo, metrics: metrics}
+func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository, couponRepo *coupon.Repository, walletRepo *wallet.Repository, metrics *Metrics) *Service {
+	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo, walletRepo: walletRepo, metrics: metrics}
 }
 
 // CreateOrder 创建订单（支持可选优惠券）
@@ -225,6 +227,77 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 
 func (svc *Service) ListOrders(ctx context.Context, param ListOrdersParam) ([]*model.Order, int64, error) {
 	return svc.repo.ListOrdersByUserID(ctx, param.UserID, param.PageNum, param.PageSize)
+}
+
+func (svc *Service) GetOrderByID(ctx context.Context, userID, orderID uuid.UUID) (*model.Order, error) {
+	return svc.repo.GetOrderByID(ctx, userID, orderID)
+}
+
+// PayOrder 使用买家余额支付订单：扣买家余额、记入商家余额、订单转为已支付在同一事务内完成。
+// 重复支付返回当前订单且不再扣款；已关闭或超过截止时间的订单拒绝支付。
+func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID string, orderID uuid.UUID) (paid *model.Order, err error) {
+	errCode := orderPaymentErrInternal
+	defer func() {
+		if err != nil {
+			svc.metrics.AddOrderPaymentTotal(ctx, orderPaymentStatusFail, errCode)
+			return
+		}
+		svc.metrics.AddOrderPaymentTotal(ctx, orderPaymentStatusSuccess, orderPaymentErrNone)
+	}()
+
+	err = database.ExecuteTransaction(ctx, svc.db, func(txCtx context.Context) error {
+		current, err := svc.repo.GetOrderForUpdateByUser(txCtx, userID, orderID)
+		if err != nil {
+			return err
+		}
+		// 已支付订单的重复请求直接返回已有结果，不重复扣款。
+		if current.Status == model.OrderStatusPaid {
+			paid = current
+			return nil
+		}
+		if current.Status != model.OrderStatusProcessing {
+			return errno.ErrOrderPaymentStatusInvalid
+		}
+		now := time.Now()
+		if !now.Before(current.PaymentDeadline) {
+			return errno.ErrOrderPaymentExpired
+		}
+
+		if current.PayableAmount > 0 {
+			if err := svc.walletRepo.DebitForOrderPayment(txCtx, userID, current.PayableAmount, sessionID, current.ID); err != nil {
+				if errors.Is(err, wallet.ErrInsufficientBalance) {
+					return errno.ErrWalletBalanceInsufficient
+				}
+				return err
+			}
+			if err := svc.walletRepo.CreditOrderIncome(txCtx, current.SellerID, current.PayableAmount, sessionID, current.ID); err != nil {
+				return err
+			}
+		}
+		if err := svc.repo.MarkOrderPaid(txCtx, current.ID, now); err != nil {
+			return err
+		}
+		persisted, err := svc.repo.GetOrderByID(txCtx, userID, orderID)
+		if err != nil {
+			return err
+		}
+		paid = persisted
+		return nil
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, errno.ErrWalletBalanceInsufficient):
+			errCode = orderPaymentErrInsufficientBalance
+		case errors.Is(err, errno.ErrOrderPaymentExpired):
+			errCode = orderPaymentErrExpired
+		case errors.Is(err, errno.ErrOrderPaymentStatusInvalid):
+			errCode = orderPaymentErrStatusInvalid
+		case errors.Is(err, errno.ErrNotFoundRecord):
+			errCode = orderPaymentErrNotFound
+		}
+		return nil, err
+	}
+	return paid, nil
 }
 
 // calculatePayableAmount fixes the amount at order creation, retaining the zero floor.

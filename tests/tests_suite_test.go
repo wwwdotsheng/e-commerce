@@ -245,7 +245,7 @@ var _ = BeforeSuite(func() {
 	}
 	couponRepo := coupon.NewRepository(testDB)
 	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics))
-	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, orderMetrics)
+	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
 	testOrderService = orderSvc
 	testOrderMQConfig = config.OrderMQ
 

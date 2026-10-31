@@ -1,7 +1,9 @@
 package order
 
 import (
+	"context"
 	"e-commerce/internal/app/identity"
+	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/response"
 	"e-commerce/pkg/errno"
 
@@ -10,10 +12,17 @@ import (
 )
 
 type Handler struct {
-	svc *Service
+	svc orderService
 }
 
-func NewHandler(svc *Service) *Handler {
+type orderService interface {
+	CreateOrder(context.Context, uuid.UUID, CreateOrderParam) error
+	ListOrders(context.Context, ListOrdersParam) ([]*model.Order, int64, error)
+	GetOrderByID(context.Context, uuid.UUID, uuid.UUID) (*model.Order, error)
+	PayOrder(context.Context, uuid.UUID, string, uuid.UUID) (*model.Order, error)
+}
+
+func NewHandler(svc orderService) *Handler {
 	return &Handler{svc: svc}
 }
 
@@ -96,4 +105,87 @@ func (h *Handler) ListOrders(c *gin.Context) {
 		Orders: items,
 		Total:  total,
 	})
+}
+
+// GetOrderByID 获取当前用户的订单详情
+func (h *Handler) GetOrderByID(c *gin.Context) {
+	ctx := c.Request.Context()
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+
+	var uri UriWithOrderID
+	if err := c.ShouldBindUri(&uri); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	orderID, err := uuid.Parse(uri.ID)
+	if err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+
+	o, err := h.svc.GetOrderByID(ctx, accountInfo.AccountId, orderID)
+	if err != nil {
+		response.Write(c, err, nil)
+		return
+	}
+	response.Write(c, nil, FormatOrderDetail(o))
+}
+
+// PayOrder 使用账户余额支付订单
+func (h *Handler) PayOrder(c *gin.Context) {
+	ctx := c.Request.Context()
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+
+	var uri UriWithOrderID
+	if err := c.ShouldBindUri(&uri); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	orderID, err := uuid.Parse(uri.ID)
+	if err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+
+	o, err := h.svc.PayOrder(ctx, accountInfo.AccountId, accountInfo.SessionID, orderID)
+	if err != nil {
+		response.Write(c, err, nil)
+		return
+	}
+	response.Write(c, nil, FormatOrderDetail(o))
+}
+
+// ApplyRefund 申请订单全额退款（当前为接口占位，业务逻辑待实现）
+func (h *Handler) ApplyRefund(c *gin.Context) {
+	ctx := c.Request.Context()
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+
+	var uri UriWithOrderID
+	if err := c.ShouldBindUri(&uri); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	if _, err := uuid.Parse(uri.ID); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+
+	var body ApplyRefundBody
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	response.Write(c, errno.ErrInternalServer, nil)
 }
