@@ -2,9 +2,11 @@ package tests
 
 import (
 	"bytes"
+	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	"github.com/goccy/go-json"
 	"github.com/google/uuid"
@@ -14,6 +16,7 @@ import (
 
 var _ = Describe("WalletApi", Ordered, func() {
 	var walletToken string
+	var walletUserID uuid.UUID
 
 	BeforeAll(func() {
 		walletUser := "wallet_" + uuid.New().String()[:8]
@@ -31,6 +34,11 @@ var _ = Describe("WalletApi", Ordered, func() {
 		}
 		json.Unmarshal(resp.Data, &loginData)
 		walletToken = loginData.AccessToken
+		Expect(walletToken).NotTo(BeEmpty())
+
+		var account model.User
+		Expect(testDB.Where("email = ?", walletUser+"@test.com").First(&account).Error).To(Succeed())
+		walletUserID = account.ID
 	})
 
 	It("钱包充值成功", func() {
@@ -107,5 +115,59 @@ var _ = Describe("WalletApi", Ordered, func() {
 		var resp Response
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		Expect(resp.Code).To(Equal(errno.ErrAuthInvalidToken.FullCode()))
+	})
+
+	It("充值幂等键非法时返回 A03103 且不落账", func() {
+		deposit := func(key string) Response {
+			GinkgoHelper()
+			body, _ := json.Marshal(map[string]interface{}{
+				"amount":          10.0,
+				"idempotency_key": key,
+			})
+			req, _ := http.NewRequest(http.MethodPost, "/api/v1/wallet/deposit", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", walletToken)
+			w := httptest.NewRecorder()
+			testRouter.ServeHTTP(w, req)
+
+			var resp Response
+			Expect(json.Unmarshal(w.Body.Bytes(), &resp)).To(Succeed())
+			return resp
+		}
+		balance := func() float64 {
+			GinkgoHelper()
+			req, _ := http.NewRequest(http.MethodGet, "/api/v1/wallet/balance", nil)
+			req.Header.Set("Authorization", walletToken)
+			w := httptest.NewRecorder()
+			testRouter.ServeHTTP(w, req)
+
+			var resp Response
+			Expect(json.Unmarshal(w.Body.Bytes(), &resp)).To(Succeed())
+			var data struct {
+				Balance float64 `json:"balance"`
+			}
+			Expect(json.Unmarshal(resp.Data, &data)).To(Succeed())
+			return data.Balance
+		}
+		logCount := func() int64 {
+			GinkgoHelper()
+			var count int64
+			Expect(testDB.Model(&model.WalletLog{}).Where("user_id = ?", walletUserID).Count(&count).Error).To(Succeed())
+			return count
+		}
+
+		beforeBalance, beforeLogs := balance(), logCount()
+		for _, c := range []struct {
+			name string
+			key  string
+		}{
+			{"占用订单保留前缀", "order:" + uuid.NewString() + ":payment"},
+			{"超过列宽", strings.Repeat("x", 65)},
+			{"含非法字符", "deposit key"},
+		} {
+			Expect(deposit(c.key).Code).To(Equal(errno.ErrWalletInvalidIdempotencyKey.FullCode()), c.name)
+		}
+		Expect(balance()).To(Equal(beforeBalance))
+		Expect(logCount()).To(Equal(beforeLogs))
 	})
 })

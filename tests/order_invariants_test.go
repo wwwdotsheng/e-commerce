@@ -243,6 +243,66 @@ var _ = Describe("Order invariants", func() {
 		Expect(list.Orders).To(BeEmpty())
 	})
 
+	It("订单列表只返回当前账号的订单", func() {
+		keyA1, keyA2, keyB := uuid.NewString(), uuid.NewString(), uuid.NewString()
+		Expect(create(keyA1, 1, "").Code).To(Equal(errno.OK.FullCode()))
+		Expect(create(keyA2, 1, "").Code).To(Equal(errno.OK.FullCode()))
+		Expect(invariantRequest(http.MethodPost, "/api/v1/order/create", otherToken, map[string]any{
+			"product_id": p.ID.String(), "quantity": 1, "idempotency_key": keyB,
+		}).Code).To(Equal(errno.OK.FullCode()))
+
+		wantBuyer := map[uuid.UUID]bool{findOrder(keyA1).ID: true, findOrder(keyA2).ID: true}
+		wantOther := map[uuid.UUID]bool{findOrder(keyB).ID: true}
+
+		assertList := func(token string, want map[uuid.UUID]bool) {
+			GinkgoHelper()
+			r := invariantRequest(http.MethodGet, "/api/v1/order/list?page_num=1&page_size=20", token, nil)
+			Expect(r.Code).To(Equal(errno.OK.FullCode()))
+			var list listOrdersResponse
+			Expect(json.Unmarshal(r.Data, &list)).To(Succeed())
+			Expect(list.Total).To(Equal(int64(len(want))))
+			Expect(list.Orders).To(HaveLen(len(want)))
+			for _, o := range list.Orders {
+				id, err := uuid.Parse(o.ID)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(want[id]).To(BeTrue(), "列表返回了不属于当前账号的订单 %s", o.ID)
+			}
+		}
+		assertList(token, wantBuyer)
+		assertList(otherToken, wantOther)
+	})
+
+	It("非买家账号不能调用订单详情", func() {
+		key := uuid.NewString()
+		Expect(create(key, 1, "").Code).To(Equal(errno.OK.FullCode()))
+		o := findOrder(key)
+
+		hash, err := bcrypt.GenerateFromPassword([]byte("seller-gate-pass"), bcrypt.MinCost)
+		Expect(err).NotTo(HaveOccurred())
+		seller := model.User{
+			ID: uuid.New(), UserName: "gate-seller-" + uuid.NewString()[:8],
+			Email: uuid.NewString() + "@example.com", Password: string(hash),
+			UserType: model.UserTypeSeller, Status: model.UserStatusActive, SellerName: "门禁商家",
+		}
+		Expect(testDB.Create(&seller).Error).To(Succeed())
+		DeferCleanup(func() {
+			Expect(testDB.Unscoped().Where("id = ?", seller.ID).Delete(&model.User{}).Error).To(Succeed())
+		})
+
+		login := invariantRequest(http.MethodPost, "/api/v1/auth/login", "", map[string]string{
+			"email": seller.Email, "password": "seller-gate-pass",
+		})
+		Expect(login.Code).To(Equal(errno.OK.FullCode()))
+		var pair struct {
+			Token string `json:"access_token"`
+		}
+		Expect(json.Unmarshal(login.Data, &pair)).To(Succeed())
+		Expect(pair.Token).NotTo(BeEmpty())
+
+		detail := invariantRequest(http.MethodGet, "/api/v1/order/"+o.ID.String(), pair.Token, nil)
+		Expect(detail.Code).To(Equal(errno.ErrAuthNotPermission.FullCode()))
+	})
+
 	DescribeTable("rejects unauthenticated requests",
 		func(tokenValue string) {
 			r := invariantRequest(http.MethodPost, "/api/v1/order/create", tokenValue, map[string]any{"product_id": p.ID.String(), "quantity": 1, "idempotency_key": uuid.NewString()})

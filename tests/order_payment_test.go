@@ -301,4 +301,31 @@ var _ = Describe("订单余额支付", func() {
 		Expect(fields.TotalAmount).To(Equal(float64(300)))
 		Expect(fields.PaidAt).NotTo(BeEmpty())
 	})
+
+	It("历史充值键占用了订单流水键时返回 A05104", func() {
+		o := createOrder(1)
+
+		// 模拟修复前被用户充值预占的系统键：唯一索引会拒绝本次支付流水。
+		legacy := model.WalletLog{
+			UserID:         buyer.ID,
+			SessionID:      "legacy-deposit",
+			Amount:         1,
+			Type:           model.WalletLogTypeDeposit,
+			IdempotencyKey: "order:" + o.ID.String() + ":payment",
+		}
+		Expect(testDB.Create(&legacy).Error).To(Succeed())
+
+		resp := pay(buyerToken, o.ID)
+		Expect(resp.Code).To(Equal(errno.ErrOrderPaymentConflict.FullCode()))
+
+		// 整个支付事务回滚：余额、订单状态和流水都不应变化。
+		Expect(balanceOf(buyer.ID)).To(Equal(float64(500)))
+		Expect(balanceOf(seller.ID)).To(BeZero())
+		Expect(paymentLogs()).To(HaveLen(1))
+
+		var current model.Order
+		Expect(testDB.First(&current, "id = ?", o.ID).Error).To(Succeed())
+		Expect(current.Status).To(Equal(model.OrderStatusProcessing))
+		Expect(current.PaidAt).To(BeNil())
+	})
 })
