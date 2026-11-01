@@ -133,7 +133,8 @@ func (svc *Service) applyRefundResult(ctx context.Context, refund *model.Refund,
 		if err != nil {
 			return err
 		}
-		if locked.Status == model.RefundStatusSucceeded || locked.Status == model.RefundStatusFailed {
+		// 成功是终态，重复确认直接返回；failed 允许重试，需要继续记录本次结果。
+		if locked.Status == model.RefundStatusSucceeded {
 			updated = *locked
 			return nil
 		}
