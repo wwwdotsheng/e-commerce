@@ -333,8 +333,8 @@ func classifyPaymentError(err error) (OrderPaymentErrCode, error) {
 		// 充值键占用了订单流水键属于历史数据问题：重试不会成功，也不能退化成 500。
 		return orderPaymentErrLedgerConflict, errno.ErrOrderPaymentConflict
 	case errors.Is(err, wallet.ErrSellerWalletMissing):
-		// 商家钱包缺失是数据异常：事务已回滚，明确告知用户联系客服，便于监控区分。
-		return orderPaymentErrSellerWallet, errno.ErrOrderPaymentSellerWallet
+		// 内部数据异常：指标单独分类便于告警，对外统一 B01001，屏蔽具体原因。
+		return orderPaymentErrSellerWallet, errno.ErrInternalServer
 	default:
 		return orderPaymentErrInternal, err
 	}
