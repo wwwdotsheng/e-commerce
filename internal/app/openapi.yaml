@@ -15,6 +15,7 @@ info:
     - A02103 token 无效
     - A02101 token 已过期
     - A02102 账号已在别处登录
+    - A02100 无权限访问（账号类型或状态不允许调用该接口）
 
     每个接口特有的业务码在对应接口的 description 中列出。
   version: "1.0"
@@ -400,6 +401,7 @@ paths:
     get:
       tags: [订单]
       summary: 订单详情
+      description: 仅买家可查询自己的订单；卖家或其他角色调用返回 A02100。
       operationId: GetOrderByID
       security:
         - AccessTokenAuth: []
@@ -412,7 +414,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: 成功返回订单详情；订单不存在或不属于当前用户时返回 A00002
+          description: 成功返回订单详情；订单不存在或不属于当前用户时返回 A00002，非买家调用返回 A02100
           content:
             application/json:
               schema:
@@ -423,6 +425,7 @@ paths:
       tags: [订单]
       summary: 使用账户余额支付订单
       description: |
+        仅买家可调用；卖家或其他角色返回 A02100。
         买家为自己的待支付订单付款：在同一事务内扣减买家余额、记入商家余额，并把订单转为已支付。
         重复支付返回已有订单，不重复扣款；已关闭或超过支付截止时间的订单拒绝支付。
       operationId: PayOrder
@@ -439,7 +442,7 @@ paths:
         '200':
           description: |
             000000 支付成功，或订单已支付时返回已有结果
-            特有错误：A00002 订单不存在或不属于当前用户、A03102 余额不足
+            特有错误：A02100 非买家调用、A00002 订单不存在或不属于当前用户、A03102 余额不足
             A05102 订单当前状态不可支付、A05103 已超过支付截止时间
             A05104 历史充值键占用了订单流水键，需人工清理
           content:
@@ -452,6 +455,7 @@ paths:
       tags: [订单]
       summary: 申请订单全额退款（模拟渠道）
       description: |
+        仅买家可调用（非买家返回 A02100）。
         仅已支付订单可以申请；一个订单最多一条退款记录。
         重复申请返回已有记录；failed 状态下使用新的 idempotency_key 可重新提交重试；
         confirming 表示渠道结果不明，通过 GET 查询确认，不重复创建。
@@ -473,7 +477,7 @@ paths:
               $ref: '#/components/schemas/ApplyRefundRequest'
       responses:
         '200':
-          description: 统一 API 响应；data 为当前退款记录
+          description: 统一 API 响应；data 为当前退款记录；非买家返回 A02100
           content:
             application/json:
               schema:
@@ -481,7 +485,7 @@ paths:
     get:
       tags: [订单]
       summary: 查询订单退款状态
-      description: 仅订单买家可查询；confirming 状态会顺带向渠道确认一次结果。
+      description: 仅买家可查询自己的订单退款；confirming 状态会顺带向渠道确认一次结果；非买家返回 A02100。
       operationId: GetOrderRefund
       security:
         - AccessTokenAuth: []
@@ -494,7 +498,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: 统一 API 响应；无退款记录时返回 A00002
+          description: 统一 API 响应；无退款记录时返回 A00002，非买家返回 A02100
           content:
             application/json:
               schema:
