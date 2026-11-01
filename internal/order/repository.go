@@ -195,7 +195,7 @@ func (repo *Repository) ListOrdersByUserID(ctx context.Context, userID uuid.UUID
 	err := baseQuery.Session(&gorm.Session{}).
 		Offset((pageNum - 1) * pageSize).
 		Limit(pageSize).
-		Order("created_at DESC").
+		Order("created_at DESC, id DESC").
 		Find(&orders).Error
 
 	return orders, total, err

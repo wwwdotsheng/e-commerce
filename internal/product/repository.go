@@ -190,7 +190,7 @@ func (repo *Repository) ListProducts(ctx context.Context, data ListProductsData)
 		Select([]string{"id", "seller_id", "name", "price", "status", "created_at"}).
 		Offset((data.PageNum - 1) * data.PageSize).
 		Limit(data.PageSize).
-		Order("created_at DESC").
+		Order("created_at DESC, id DESC").
 		Find(&products).Error
 
 	return products, total, err

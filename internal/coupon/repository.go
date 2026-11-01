@@ -97,7 +97,7 @@ func (r *Repository) ListUserCoupons(ctx context.Context, userID uuid.UUID, page
 	err := baseQuery.Session(&gorm.Session{}).
 		Offset((pageNum - 1) * pageSize).
 		Limit(pageSize).
-		Order("created_at DESC").
+		Order("created_at DESC, id DESC").
 		Find(&coupons).Error
 
 	return coupons, total, err
