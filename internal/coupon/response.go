@@ -23,17 +23,17 @@ type TemplateItem struct {
 }
 
 type UserCouponItem struct {
-	ID             string        `json:"id"`
-	TemplateID     string        `json:"template_id"`
-	TemplateName   string        `json:"template_name"`
-	Type           string        `json:"type"`
-	DiscountValue  float64       `json:"discount_value"`
-	DiscountRate   float64       `json:"discount_rate"`
-	MaxDeduction   float64       `json:"max_deduction"`
-	MinAmount      float64       `json:"min_amount"`
-	Status         string        `json:"status"`
-	ExpireTime     string        `json:"expire_time"`
-	CreatedAt      string        `json:"created_at"`
+	ID            string  `json:"id"`
+	TemplateID    string  `json:"template_id"`
+	TemplateName  string  `json:"template_name"`
+	Type          string  `json:"type"`
+	DiscountValue float64 `json:"discount_value"`
+	DiscountRate  float64 `json:"discount_rate"`
+	MaxDeduction  float64 `json:"max_deduction"`
+	MinAmount     float64 `json:"min_amount"`
+	Status        string  `json:"status"`
+	ExpireTime    string  `json:"expire_time"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 type ListUserCouponsResponse struct {
@@ -53,10 +53,10 @@ func formatTemplate(t *model.CouponTemplate) *TemplateItem {
 		TotalQty:      t.TotalQty,
 		RemainingQty:  t.RemainingQty,
 		PerUserLimit:  t.PerUserLimit,
-		StartTime:     t.StartTime.Format(time.DateTime),
-		EndTime:       t.EndTime.Format(time.DateTime),
+		StartTime:     t.StartTime.Format(time.RFC3339),
+		EndTime:       t.EndTime.Format(time.RFC3339),
 		Status:        string(t.Status),
-		CreatedAt:     t.CreatedAt.Format(time.DateTime),
+		CreatedAt:     t.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -65,8 +65,8 @@ func formatUserCoupon(uc *model.UserCoupon) *UserCouponItem {
 		ID:         uc.ID.String(),
 		TemplateID: uc.TemplateID.String(),
 		Status:     string(uc.Status),
-		ExpireTime: uc.ExpireTime.Format(time.DateTime),
-		CreatedAt:  uc.CreatedAt.Format(time.DateTime),
+		ExpireTime: uc.ExpireTime.Format(time.RFC3339),
+		CreatedAt:  uc.CreatedAt.Format(time.RFC3339),
 	}
 	if uc.Template != nil {
 		item.TemplateName = uc.Template.Name

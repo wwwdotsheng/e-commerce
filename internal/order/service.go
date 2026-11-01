@@ -285,16 +285,7 @@ func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID st
 		return nil
 	})
 	if err != nil {
-		switch {
-		case errors.Is(err, errno.ErrWalletBalanceInsufficient):
-			errCode = orderPaymentErrInsufficientBalance
-		case errors.Is(err, errno.ErrOrderPaymentExpired):
-			errCode = orderPaymentErrExpired
-		case errors.Is(err, errno.ErrOrderPaymentStatusInvalid):
-			errCode = orderPaymentErrStatusInvalid
-		case errors.Is(err, errno.ErrNotFoundRecord):
-			errCode = orderPaymentErrNotFound
-		}
+		errCode, err = classifyPaymentError(err)
 		return nil, err
 	}
 	return paid, nil
@@ -304,4 +295,24 @@ func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID st
 func calculatePayableAmount(unitPrice float64, quantity int, discount float64) float64 {
 	gross := math.Round(unitPrice*float64(quantity)*100) / 100
 	return math.Max(0, math.Round((gross-math.Round(discount*100)/100)*100)/100)
+}
+
+// classifyPaymentError 把支付事务里的内部错误翻译成对外业务错误，并给出指标分类。
+// 未识别的错误保持原样，由 response 层退化为 B01001。
+func classifyPaymentError(err error) (OrderPaymentErrCode, error) {
+	switch {
+	case errors.Is(err, errno.ErrWalletBalanceInsufficient):
+		return orderPaymentErrInsufficientBalance, err
+	case errors.Is(err, errno.ErrOrderPaymentExpired):
+		return orderPaymentErrExpired, err
+	case errors.Is(err, errno.ErrOrderPaymentStatusInvalid):
+		return orderPaymentErrStatusInvalid, err
+	case errors.Is(err, errno.ErrNotFoundRecord):
+		return orderPaymentErrNotFound, err
+	case errors.Is(err, wallet.ErrWalletLogAlreadyExists):
+		// 充值键占用了订单流水键属于历史数据问题：重试不会成功，也不能退化成 500。
+		return orderPaymentErrLedgerConflict, errno.ErrOrderPaymentConflict
+	default:
+		return orderPaymentErrInternal, err
+	}
 }

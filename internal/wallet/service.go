@@ -6,11 +6,20 @@ import (
 	"e-commerce/pkg/clog"
 	"e-commerce/pkg/errno"
 	"errors"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
+
+// walletLogIdempotencyKeyMaxLen 与 wallet_logs.idempotency_key 的 varchar(64) 保持一致。
+const walletLogIdempotencyKeyMaxLen = 64
+
+// depositIdempotencyKeyPattern 限制用户提供的幂等键字符集：字母、数字与 . _ : -，
+// 避免控制字符、空白等进入日志和唯一索引。
+var depositIdempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]+$`)
 
 type Service struct {
 	walletRepo *Repository
@@ -45,11 +54,19 @@ func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID str
 		errCode = depositErrInvalid
 		return errno.ErrWalletInvalidDepositAmount
 	}
+	if err := validateDepositIdempotencyKey(input.IdempotencyKey); err != nil {
+		logger.Warn(errno.ErrWalletInvalidIdempotencyKey.Message,
+			zap.String("user_id", UserID.String()),
+			zap.Int("key_length", len(input.IdempotencyKey)),
+		)
+		errCode = depositErrInvalid
+		return err
+	}
 
 	err = database.ExecuteTransaction(ctx, svc.walletRepo.GetDB(ctx), func(txCtx context.Context) error {
 		return svc.walletRepo.Deposit(txCtx, UserID, SessionID, input)
 	})
-	if errors.Is(err, repoErrWalletLogAlreadyExists) {
+	if errors.Is(err, ErrWalletLogAlreadyExists) {
 		return nil
 	}
 	return err
@@ -61,4 +78,13 @@ func (svc *Service) GetBalance(ctx context.Context, userID uuid.UUID) (float64, 
 		return 0, errno.ErrNotFoundRecord
 	}
 	return balance, err
+}
+
+// validateDepositIdempotencyKey 保证用户提供的充值幂等键不会占用系统订单流水的保留命名空间、
+// 长度不超过 wallet_logs.idempotency_key 列宽、字符集安全，避免写入时退化为 500。
+func validateDepositIdempotencyKey(key string) error {
+	if key == "" || len(key) > walletLogIdempotencyKeyMaxLen || strings.HasPrefix(key, orderLogKeyPrefix) || !depositIdempotencyKeyPattern.MatchString(key) {
+		return errno.ErrWalletInvalidIdempotencyKey
+	}
+	return nil
 }

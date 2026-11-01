@@ -17,8 +17,9 @@ var (
 	ErrAuthSessionRevoked = &Errno{Type: "A", Domain: "02", Code: "102", Message: "账号已在别处登录"}
 	ErrAuthInvalidToken   = &Errno{Type: "A", Domain: "02", Code: "103", Message: "非法访问"}
 
-	ErrWalletInvalidDepositAmount = &Errno{Type: "A", Domain: "03", Code: "101", Message: "充值金额非法"}
-	ErrWalletBalanceInsufficient  = &Errno{Type: "A", Domain: "03", Code: "102", Message: "账户余额不足"}
+	ErrWalletInvalidDepositAmount  = &Errno{Type: "A", Domain: "03", Code: "101", Message: "充值金额非法"}
+	ErrWalletBalanceInsufficient   = &Errno{Type: "A", Domain: "03", Code: "102", Message: "账户余额不足"}
+	ErrWalletInvalidIdempotencyKey = &Errno{Type: "A", Domain: "03", Code: "103", Message: "幂等键非法"}
 
 	ErrProductStockInsufficient = &Errno{Type: "A", Domain: "04", Code: "101", Message: "库存不足"}
 	ErrProductNotFound          = &Errno{Type: "A", Domain: "04", Code: "102", Message: "商品不存在"}
@@ -29,6 +30,8 @@ var (
 
 	ErrOrderPaymentStatusInvalid = &Errno{Type: "A", Domain: "05", Code: "102", Message: "订单当前状态不可支付"}
 	ErrOrderPaymentExpired       = &Errno{Type: "A", Domain: "05", Code: "103", Message: "订单已超过支付截止时间"}
+	// ErrOrderPaymentConflict 历史数据里用户充值键占用了订单流水键，订单无法完成支付，需要人工处理。
+	ErrOrderPaymentConflict = &Errno{Type: "A", Domain: "05", Code: "104", Message: "订单支付流水冲突，请联系客服处理"}
 
 	ErrInternalServer = &Errno{Type: "B", Domain: "01", Code: "001", Message: "系统繁忙，请稍后重试"}
 	ErrDatabase       = &Errno{Type: "B", Domain: "01", Code: "002", Message: "数据库操作异常"}

@@ -130,7 +130,7 @@ paths:
         '200':
           description: |
             00000 充值成功
-            特有错误：A03101 充值金额非法
+            特有错误：A03101 充值金额非法、A03103 幂等键非法（空、超过 64 字符、含非法字符或以 order: 开头）
           content:
             application/json:
               schema:
@@ -441,6 +441,7 @@ paths:
             000000 支付成功，或订单已支付时返回已有结果
             特有错误：A00002 订单不存在或不属于当前用户、A03102 余额不足
             A05102 订单当前状态不可支付、A05103 已超过支付截止时间
+            A05104 历史充值键占用了订单流水键，需人工清理
           content:
             application/json:
               schema:
@@ -718,7 +719,9 @@ components:
           description: 充值金额，必须大于 0
         idempotency_key:
           type: string
-          description: 幂等键，防止重复充值
+          maxLength: 64
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: 幂等键，防止重复充值；不允许占用 order: 系统命名空间
 
     CreateProductRequest:
       type: object
@@ -1099,12 +1102,15 @@ components:
           type: integer
         start_time:
           type: string
+          format: date-time
         end_time:
           type: string
+          format: date-time
         status:
           type: string
         created_at:
           type: string
+          format: date-time
 
     TemplateResponse:
       allOf:
@@ -1151,8 +1157,10 @@ components:
           enum: [unused, used, expired]
         expire_time:
           type: string
+          format: date-time
         created_at:
           type: string
+          format: date-time
 
     UserCouponResponse:
       allOf:

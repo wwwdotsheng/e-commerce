@@ -157,7 +157,7 @@ func SetupRouter(
 		orderGroup := v1.Group("/order").Use(accessTokenAuthMiddleware)
 		orderGroup.POST("/create", middleware.RequireUserType(model.UserTypeBuyer), orderH.CreateOrder)
 		orderGroup.GET("/list", orderH.ListOrders)
-		orderGroup.GET("/:id", orderH.GetOrderByID)
+		orderGroup.GET("/:id", middleware.RequireUserType(model.UserTypeBuyer), orderH.GetOrderByID)
 		orderGroup.POST("/:id/pay", middleware.RequireUserType(model.UserTypeBuyer), orderH.PayOrder)
 		orderGroup.POST("/:id/refund", middleware.RequireUserType(model.UserTypeBuyer), orderH.ApplyRefund)
 

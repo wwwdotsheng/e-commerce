@@ -58,7 +58,7 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 		DiscountAmount: o.DiscountAmount,
 		TotalAmount:    o.PayableAmount,
 		Status:         int(o.Status),
-		CreatedAt:      o.CreatedAt.Format("2006-01-02 15:04:05"),
+		CreatedAt:      o.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -71,7 +71,7 @@ func FormatOrderDetail(o *model.Order) *OrderDetailResponse {
 	return &OrderDetailResponse{
 		OrderItem: *FormatOrderItem(o),
 		CouponID:  couponID,
-		UpdatedAt: o.UpdatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt: o.UpdatedAt.Format(time.RFC3339),
 		Refund:    nil,
 	}
 }

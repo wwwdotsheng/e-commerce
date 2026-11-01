@@ -47,6 +47,7 @@ const (
 	orderPaymentErrExpired             OrderPaymentErrCode = "expired"
 	orderPaymentErrStatusInvalid       OrderPaymentErrCode = "status_invalid"
 	orderPaymentErrNotFound            OrderPaymentErrCode = "not_found"
+	orderPaymentErrLedgerConflict      OrderPaymentErrCode = "ledger_conflict"
 	orderPaymentErrInternal            OrderPaymentErrCode = "internal"
 )
 

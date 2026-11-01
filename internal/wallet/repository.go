@@ -17,13 +17,15 @@ import (
 )
 
 var (
-	repoErrWalletLogAlreadyExists = errors.New("wallet log already exists")
+	// ErrWalletLogAlreadyExists 表示 wallet_logs 的全局唯一幂等键已被占用。
+	// 充值路径把它当作重复请求；订单支付路径必须由上层翻译成明确的业务错误。
+	ErrWalletLogAlreadyExists = errors.New("wallet log already exists")
 	// ErrInsufficientBalance 买家钱包余额不足以完成本次扣款。
 	ErrInsufficientBalance = errors.New("wallet balance is insufficient")
 )
 
 var constraintMap = map[string]error{
-	model.ConstraintWalletLogIdempotencyKey: repoErrWalletLogAlreadyExists,
+	model.ConstraintWalletLogIdempotencyKey: ErrWalletLogAlreadyExists,
 }
 
 type Repository struct {
@@ -155,11 +157,15 @@ func (repo *Repository) createLog(ctx context.Context, log *model.WalletLog) err
 	return nil
 }
 
+// orderLogKeyPrefix 是系统订单流水的保留命名空间。
+// 充值幂等键由用户提供，必须拒绝该前缀，避免用户预占订单流水键导致订单永远无法支付。
+const orderLogKeyPrefix = "order:"
+
 // 订单支付与入账各只有一条账本，订单 ID 即幂等键。
 func orderPaymentLogKey(orderID uuid.UUID) string {
-	return "order:" + orderID.String() + ":payment"
+	return orderLogKeyPrefix + orderID.String() + ":payment"
 }
 
 func orderIncomeLogKey(orderID uuid.UUID) string {
-	return "order:" + orderID.String() + ":income"
+	return orderLogKeyPrefix + orderID.String() + ":income"
 }

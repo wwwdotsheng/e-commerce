@@ -1,6 +1,9 @@
 package product
 
-import "e-commerce/internal/model"
+import (
+	"e-commerce/internal/model"
+	"time"
+)
 
 type Item struct {
 	ID         string  `json:"id"`
@@ -21,7 +24,7 @@ type ListProductsResponse struct {
 }
 
 func FormatItem(p *model.Product, sellerName string) *Item {
-	return &Item{ID: p.ID.String(), SellerID: p.SellerID.String(), SellerName: sellerName, Name: p.Name, Price: p.Price, Status: string(p.Status), CreatedAt: p.CreatedAt.Format("2006-01-02 15:04:05")}
+	return &Item{ID: p.ID.String(), SellerID: p.SellerID.String(), SellerName: sellerName, Name: p.Name, Price: p.Price, Status: string(p.Status), CreatedAt: p.CreatedAt.Format(time.RFC3339)}
 }
 func FormatDetail(p *model.Product, sellerName string) *Detail {
 	return &Detail{Item: *FormatItem(p, sellerName), Description: p.Description}
