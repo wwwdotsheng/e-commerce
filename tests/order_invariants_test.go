@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -56,9 +57,9 @@ var _ = Describe("Order invariants", func() {
 		other = model.User{ID: uuid.New(), UserName: "inv-other-" + uuid.NewString()[:8], Email: uuid.NewString() + "@example.test", Password: string(hash)}
 		Expect(testDB.Create(&buyer).Error).To(Succeed())
 		Expect(testDB.Create(&other).Error).To(Succeed())
-		p = model.Product{ID: uuid.New(), SellerID: other.ID, Name: "Invariant product", Description: "fixture", Price: 100, Stock: 5, Status: model.ProductStatusActive, Version: 1}
+		p = model.Product{ID: uuid.New(), SellerID: other.ID, Name: "Invariant product", Description: "fixture", Price: decimal.NewFromInt(100), Stock: 5, Status: model.ProductStatusActive, Version: 1}
 		Expect(testDB.Create(&p).Error).To(Succeed())
-		template = model.CouponTemplate{ID: uuid.New(), Name: "Invariant coupon", Type: model.CouponTypeFixed, DiscountValue: 10, TotalQty: 10, RemainingQty: 10, PerUserLimit: 1, StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive}
+		template = model.CouponTemplate{ID: uuid.New(), Name: "Invariant coupon", Type: model.CouponTypeFixed, DiscountValue: decimal.NewFromInt(10), TotalQty: 10, RemainingQty: 10, PerUserLimit: 1, StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive}
 		Expect(testDB.Create(&template).Error).To(Succeed())
 		uc = model.UserCoupon{ID: uuid.New(), UserID: buyer.ID, TemplateID: template.ID, Status: model.UserCouponStatusUnused, ExpireTime: time.Now().Add(time.Hour)}
 		Expect(testDB.Create(&uc).Error).To(Succeed())
@@ -100,6 +101,11 @@ var _ = Describe("Order invariants", func() {
 		Expect(testDB.First(&o, "idempotency_key = ?", key).Error).To(Succeed())
 		return o
 	}
+	expireOrder := func(id uuid.UUID) {
+		GinkgoHelper()
+		Expect(testDB.Model(&model.Order{}).Where("id = ?", id).
+			Update("payment_deadline", time.Now().Add(-time.Second)).Error).To(Succeed())
+	}
 
 	It("returns order details only to the owning user", func() {
 		key := uuid.NewString()
@@ -126,9 +132,9 @@ var _ = Describe("Order invariants", func() {
 		Expect(detail.ProductID).To(Equal(p.ID.String()))
 		Expect(detail.Quantity).To(Equal(2))
 		Expect(detail.SnapshotTitle).To(Equal(p.Name))
-		Expect(detail.SnapshotPrice).To(Equal(p.Price))
+		Expect(detail.SnapshotPrice).To(Equal(p.Price.InexactFloat64()))
 		Expect(detail.DiscountAmount).To(BeZero())
-		Expect(detail.TotalAmount).To(Equal(p.Price * 2))
+		Expect(detail.TotalAmount).To(Equal(p.Price.Mul(decimal.NewFromInt(2)).InexactFloat64()))
 		Expect(detail.Status).To(Equal(int(o.Status)))
 		Expect(detail.CreatedAt).NotTo(BeEmpty())
 		Expect(detail.UpdatedAt).NotTo(BeEmpty())
@@ -198,7 +204,7 @@ var _ = Describe("Order invariants", func() {
 		Expect(testDB.First(&used, "id = ?", uc.ID).Error).To(Succeed())
 		Expect(used.UsedOrderID).NotTo(BeNil())
 		Expect(*used.UsedOrderID).To(Equal(o.ID))
-		Expect(o.DiscountAmount).To(Equal(float64(10)))
+		Expect(o.DiscountAmount.Equal(decimal.NewFromInt(10))).To(BeTrue())
 		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
 		Expect(stock()).To(Equal(3))
 	})
@@ -207,6 +213,7 @@ var _ = Describe("Order invariants", func() {
 		key := uuid.NewString()
 		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
 		o := findOrder(key)
+		expireOrder(o.ID)
 		for i := 0; i < 3; i++ {
 			Expect(testOrderService.HandleOrderTimeout(context.Background(), o.ID)).To(Succeed())
 		}
@@ -219,6 +226,23 @@ var _ = Describe("Order invariants", func() {
 		var count int64
 		Expect(testDB.Model(&model.StockChangeLog{}).Where("product_id = ? AND reason = ?", p.ID, model.StockChangeTimeout).Count(&count).Error).To(Succeed())
 		Expect(count).To(Equal(int64(1)))
+	})
+
+	It("超时消息早于截止时间到达时不会提前关单", func() {
+		key := uuid.NewString()
+		Expect(create(key, 2, "").Code).To(Equal(errno.OK.FullCode()))
+		o := findOrder(key)
+
+		// 截止时间未到：消息提前到达时不能关单，库存保持原状。
+		Expect(testOrderService.HandleOrderTimeout(context.Background(), o.ID)).To(Succeed())
+		Expect(findOrder(key).Status).To(Equal(model.OrderStatusProcessing))
+		Expect(stock()).To(Equal(3))
+
+		// 截止时间过后再次投递，正常关闭并释放库存。
+		expireOrder(o.ID)
+		Expect(testOrderService.HandleOrderTimeout(context.Background(), o.ID)).To(Succeed())
+		Expect(findOrder(key).Status).To(Equal(model.OrderStatusTimeout))
+		Expect(stock()).To(Equal(5))
 	})
 
 	It("does not return a completed order's coupon or inventory", func() {
@@ -336,7 +360,7 @@ var _ = Describe("Order invariants", func() {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				results <- svc.Deposit(context.Background(), buyer.ID, "test-session", &wallet.DepositInput{Amount: 100, IdempotencyKey: key})
+				results <- svc.Deposit(context.Background(), buyer.ID, "test-session", &wallet.DepositInput{Amount: decimal.NewFromInt(100), IdempotencyKey: key})
 			}()
 		}
 		wg.Wait()
@@ -346,7 +370,7 @@ var _ = Describe("Order invariants", func() {
 		}
 		var balance model.UserWallet
 		Expect(testDB.First(&balance, "user_id = ?", buyer.ID).Error).To(Succeed())
-		Expect(balance.Balance).To(Equal(float64(100)))
+		Expect(balance.Balance.Equal(decimal.NewFromInt(100))).To(BeTrue())
 		var count int64
 		Expect(testDB.Model(&model.WalletLog{}).Where("user_id = ?", buyer.ID).Count(&count).Error).To(Succeed())
 		Expect(count).To(Equal(int64(1)))
@@ -372,6 +396,7 @@ var _ = Describe("Order invariants", func() {
 		key := uuid.NewString()
 		Expect(create(key, 2, "").Code).To(Equal(errno.OK.FullCode()))
 		o := findOrder(key)
+		expireOrder(o.ID)
 		results := make(chan error, 10)
 		var wg sync.WaitGroup
 		for i := 0; i < 10; i++ {
@@ -393,6 +418,7 @@ var _ = Describe("Order invariants", func() {
 		firstKey := uuid.NewString()
 		Expect(create(firstKey, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
 		first := findOrder(firstKey)
+		expireOrder(first.ID)
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), first.ID)).To(Succeed())
 		secondKey := uuid.NewString()
 		Expect(create(secondKey, 1, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))

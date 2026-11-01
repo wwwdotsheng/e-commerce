@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -40,7 +41,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client) *Repository {
 func (repo *Repository) CreateDefaultAccount(ctx context.Context, userID uuid.UUID) error {
 	record := &model.UserWallet{
 		UserID:    userID,
-		Balance:   0.00,
+		Balance:   decimal.Zero,
 		UpdatedAt: time.Now(),
 	}
 	return repo.GetDB(ctx).Create(record).Error
@@ -71,24 +72,24 @@ func (repo *Repository) Deposit(ctx context.Context, userID uuid.UUID, sessionID
 	}).Error
 }
 
-func (repo *Repository) GetBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+func (repo *Repository) GetBalance(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error) {
 	var account model.UserWallet
 	if err := repo.GetDB(ctx).First(&account, "user_id = ?", userID).Error; err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
 	return account.Balance, nil
 }
 
 // DebitForOrderPayment 在调用方事务内扣减买家余额并写入一条负数账本。
 // 余额不足时返回 ErrInsufficientBalance，扣款和账本一起回滚。
-func (repo *Repository) DebitForOrderPayment(ctx context.Context, userID uuid.UUID, amount float64, sessionID string, orderID uuid.UUID) error {
-	if amount <= 0 {
+func (repo *Repository) DebitForOrderPayment(ctx context.Context, userID uuid.UUID, amount decimal.Decimal, sessionID string, orderID uuid.UUID) error {
+	if !amount.IsPositive() {
 		return nil
 	}
 	log := &model.WalletLog{
 		UserID:         userID,
 		SessionID:      sessionID,
-		Amount:         -amount,
+		Amount:         amount.Neg(),
 		Type:           model.WalletLogTypeOrderPayment,
 		IdempotencyKey: orderPaymentLogKey(orderID),
 	}
@@ -112,8 +113,8 @@ func (repo *Repository) DebitForOrderPayment(ctx context.Context, userID uuid.UU
 }
 
 // CreditOrderIncome 在调用方事务内把订单金额记入商家余额，并写入一条正数账本。
-func (repo *Repository) CreditOrderIncome(ctx context.Context, sellerID uuid.UUID, amount float64, sessionID string, orderID uuid.UUID) error {
-	if amount <= 0 {
+func (repo *Repository) CreditOrderIncome(ctx context.Context, sellerID uuid.UUID, amount decimal.Decimal, sessionID string, orderID uuid.UUID) error {
+	if !amount.IsPositive() {
 		return nil
 	}
 	log := &model.WalletLog{

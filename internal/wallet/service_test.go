@@ -9,6 +9,7 @@ import (
 	"e-commerce/pkg/errno"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.opentelemetry.io/otel"
 )
 
@@ -54,7 +55,7 @@ func TestDepositRejectsReservedKeyBeforeWriting(t *testing.T) {
 	svc := NewService(nil, metrics)
 
 	err = svc.Deposit(context.Background(), uuid.New(), "test-session", &DepositInput{
-		Amount:         10,
+		Amount:         decimal.NewFromInt(10),
 		IdempotencyKey: orderPaymentLogKey(uuid.New()),
 	})
 	if !errors.Is(err, errno.ErrWalletInvalidIdempotencyKey) {

@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +61,7 @@ var _ = Describe("商家账号直接管理商品", func() {
 		Expect(invariantRequest(http.MethodPatch, "/api/v1/product/"+p.ID.String(), otherToken, map[string]interface{}{"price": 20}).Code).To(Equal(errno.ErrProductNotFound.FullCode()))
 		Expect(invariantRequest(http.MethodDelete, "/api/v1/product/"+p.ID.String(), otherToken, nil).Code).To(Equal(errno.ErrProductNotFound.FullCode()))
 		Expect(testDB.First(&p, "id = ?", p.ID).Error).To(Succeed())
-		Expect(p.Price).To(Equal(float64(10)))
+		Expect(p.Price.Equal(decimal.NewFromInt(10))).To(BeTrue())
 		Expect(p.Status).To(Equal(model.ProductStatusActive))
 	})
 })

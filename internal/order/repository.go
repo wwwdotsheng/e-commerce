@@ -20,6 +20,8 @@ import (
 
 var (
 	repoErrOrderIdempotencyConflict = errors.New("order idempotency key already exists")
+	// errOrderTimeoutNotDue 表示超时消息早于 payment_deadline 到达，不能提前关单。
+	errOrderTimeoutNotDue = errors.New("order payment deadline not reached")
 )
 
 var constraintMap = map[string]error{
@@ -164,6 +166,11 @@ func (repo *Repository) HandleOrderTimeout(ctx context.Context, orderID uuid.UUI
 	}
 	if o.Status != model.OrderStatusProcessing {
 		return nil, nil
+	}
+	// 消息可能因为队列 TTL 与 payment_deadline 不同步而提前到达；
+	// 截止时间没到就不能关单，由 service 重新投递消息。
+	if time.Now().Before(o.PaymentDeadline) {
+		return &o, errOrderTimeoutNotDue
 	}
 	closedAt := time.Now()
 	closeReason := model.OrderCloseReasonPaymentTimeout

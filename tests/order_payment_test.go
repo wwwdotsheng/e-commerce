@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -39,14 +40,14 @@ var _ = Describe("订单余额支付", func() {
 
 	createWallet := func(userID uuid.UUID, balance float64) {
 		GinkgoHelper()
-		Expect(testDB.Create(&model.UserWallet{UserID: userID, Balance: balance}).Error).To(Succeed())
+		Expect(testDB.Create(&model.UserWallet{UserID: userID, Balance: decimal.NewFromFloat(balance)}).Error).To(Succeed())
 	}
 
 	balanceOf := func(userID uuid.UUID) float64 {
 		GinkgoHelper()
 		var wallet model.UserWallet
 		Expect(testDB.First(&wallet, "user_id = ?", userID).Error).To(Succeed())
-		return wallet.Balance
+		return wallet.Balance.InexactFloat64()
 	}
 
 	createOrder := func(qty int) model.Order {
@@ -80,7 +81,7 @@ var _ = Describe("订单余额支付", func() {
 
 		product = model.Product{
 			ID: uuid.New(), SellerID: seller.ID, Name: "支付测试商品", Description: "fixture",
-			Price: 100, Stock: 10, Status: model.ProductStatusActive, Version: 1,
+			Price: decimal.NewFromInt(100), Stock: 10, Status: model.ProductStatusActive, Version: 1,
 		}
 		Expect(testDB.Create(&product).Error).To(Succeed())
 
@@ -105,7 +106,7 @@ var _ = Describe("订单余额支付", func() {
 
 	It("支付成功后买家扣款、商家入账并写入支付时间", func() {
 		o := createOrder(2)
-		Expect(o.PayableAmount).To(Equal(float64(200)))
+		Expect(o.PayableAmount.InexactFloat64()).To(Equal(float64(200)))
 
 		resp := pay(buyerToken, o.ID)
 		Expect(resp.Code).To(Equal(errno.OK.FullCode()))
@@ -133,10 +134,10 @@ var _ = Describe("订单余额支付", func() {
 		var buyerLog, sellerLog model.WalletLog
 		Expect(testDB.First(&buyerLog, "user_id = ?", buyer.ID).Error).To(Succeed())
 		Expect(buyerLog.Type).To(Equal(model.WalletLogTypeOrderPayment))
-		Expect(buyerLog.Amount).To(Equal(float64(-200)))
+		Expect(buyerLog.Amount.InexactFloat64()).To(Equal(float64(-200)))
 		Expect(testDB.First(&sellerLog, "user_id = ?", seller.ID).Error).To(Succeed())
 		Expect(sellerLog.Type).To(Equal(model.WalletLogTypeOrderIncome))
-		Expect(sellerLog.Amount).To(Equal(float64(200)))
+		Expect(sellerLog.Amount.InexactFloat64()).To(Equal(float64(200)))
 	})
 
 	It("重复支付返回已有结果且不重复扣款", func() {
@@ -189,6 +190,8 @@ var _ = Describe("订单余额支付", func() {
 
 	It("已超时关闭的订单不能再支付", func() {
 		o := createOrder(1)
+		Expect(testDB.Model(&model.Order{}).Where("id = ?", o.ID).
+			Update("payment_deadline", time.Now().Add(-time.Second)).Error).To(Succeed())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), o.ID)).To(Succeed())
 
 		Expect(pay(buyerToken, o.ID).Code).To(Equal(errno.ErrOrderPaymentStatusInvalid.FullCode()))
@@ -259,7 +262,7 @@ var _ = Describe("订单余额支付", func() {
 	It("零元订单直接支付成功且不产生资金流水", func() {
 		free := model.Product{
 			ID: uuid.New(), SellerID: seller.ID, Name: "免费测试商品", Description: "fixture",
-			Price: 0, Stock: 1, Status: model.ProductStatusActive, Version: 1,
+			Price: decimal.Zero, Stock: 1, Status: model.ProductStatusActive, Version: 1,
 		}
 		Expect(testDB.Create(&free).Error).To(Succeed())
 		defer func() {
@@ -273,7 +276,7 @@ var _ = Describe("订单余额支付", func() {
 		}).Code).To(Equal(errno.OK.FullCode()))
 		var o model.Order
 		Expect(testDB.First(&o, "idempotency_key = ?", key).Error).To(Succeed())
-		Expect(o.PayableAmount).To(BeZero())
+		Expect(o.PayableAmount.IsZero()).To(BeTrue())
 
 		resp := pay(buyerToken, o.ID)
 		Expect(resp.Code).To(Equal(errno.OK.FullCode()))
@@ -309,7 +312,7 @@ var _ = Describe("订单余额支付", func() {
 		legacy := model.WalletLog{
 			UserID:         buyer.ID,
 			SessionID:      "legacy-deposit",
-			Amount:         1,
+			Amount:         decimal.NewFromInt(1),
 			Type:           model.WalletLogTypeDeposit,
 			IdempotencyKey: "order:" + o.ID.String() + ":payment",
 		}

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -27,26 +28,26 @@ const (
 
 // CouponTemplate 优惠券模板
 type CouponTemplate struct {
-	ID             uuid.UUID    `gorm:"column:id;primaryKey;type:uuid"`
-	Name           string       `gorm:"column:name;type:varchar(128);not null"`
-	Type           CouponType   `gorm:"column:type;type:varchar(16);not null"`
-	DiscountValue  float64      `gorm:"column:discount_value;decimal(16,2);not null;default:0"`
-	DiscountRate   float64      `gorm:"column:discount_rate;decimal(5,2);not null;default:0"`
-	MaxDeduction   float64      `gorm:"column:max_deduction;decimal(16,2);not null;default:0"`
-	MinAmount      float64      `gorm:"column:min_amount;decimal(16,2);not null;default:0"`
-	TotalQty       int          `gorm:"column:total_qty;not null"`
-	RemainingQty   int          `gorm:"column:remaining_qty;not null"`
-	PerUserLimit   int          `gorm:"column:per_user_limit;not null;default:1"`
-	StartTime      time.Time    `gorm:"column:start_time;not null"`
-	EndTime        time.Time    `gorm:"column:end_time;not null"`
-	Status         CouponStatus `gorm:"column:status;type:varchar(16);not null;default:'active'"`
-	Version        int          `gorm:"column:version;not null;default:0"`
-	CreatedAt      time.Time    `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt      time.Time    `gorm:"column:updated_at;autoUpdateTime"`
-	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	ID            uuid.UUID       `gorm:"column:id;primaryKey;type:uuid"`
+	Name          string          `gorm:"column:name;type:varchar(128);not null"`
+	Type          CouponType      `gorm:"column:type;type:varchar(16);not null"`
+	DiscountValue decimal.Decimal `gorm:"column:discount_value;decimal(16,2);not null;default:0"`
+	DiscountRate  decimal.Decimal `gorm:"column:discount_rate;decimal(5,2);not null;default:0"`
+	MaxDeduction  decimal.Decimal `gorm:"column:max_deduction;decimal(16,2);not null;default:0"`
+	MinAmount     decimal.Decimal `gorm:"column:min_amount;decimal(16,2);not null;default:0"`
+	TotalQty      int             `gorm:"column:total_qty;not null"`
+	RemainingQty  int             `gorm:"column:remaining_qty;not null"`
+	PerUserLimit  int             `gorm:"column:per_user_limit;not null;default:1"`
+	StartTime     time.Time       `gorm:"column:start_time;not null"`
+	EndTime       time.Time       `gorm:"column:end_time;not null"`
+	Status        CouponStatus    `gorm:"column:status;type:varchar(16);not null;default:'active'"`
+	Version       int             `gorm:"column:version;not null;default:0"`
+	CreatedAt     time.Time       `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt     time.Time       `gorm:"column:updated_at;autoUpdateTime"`
+	DeletedAt     gorm.DeletedAt  `gorm:"index"`
 }
 
-	// 表名是单数 —— GORM 的复数化会推导成 coupon_templates，与迁移建的表不一致。
+// 表名是单数 —— GORM 的复数化会推导成 coupon_templates，与迁移建的表不一致。
 func (CouponTemplate) TableName() string {
 	return "coupon_template"
 }
@@ -90,7 +91,7 @@ type UserCoupon struct {
 	Template *CouponTemplate `gorm:"foreignKey:TemplateID;references:ID"`
 }
 
-	// 表名是单数 —— GORM 的复数化会推导成 user_coupons，与迁移建的表不一致。
+// 表名是单数 —— GORM 的复数化会推导成 user_coupons，与迁移建的表不一致。
 func (UserCoupon) TableName() string {
 	return "user_coupon"
 }

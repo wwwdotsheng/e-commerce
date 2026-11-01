@@ -4,12 +4,13 @@ import (
 	"e-commerce/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 type CreateProductParam struct {
 	Name        string
 	Description string
-	Price       float64
+	Price       decimal.Decimal
 	Status      *model.ProductStatus
 	Stock       int
 	SellerID    uuid.UUID
@@ -35,7 +36,7 @@ type UpdateProductPropertyParam struct {
 	SellerID    uuid.UUID
 	Name        *string
 	Description *string
-	Price       *float64
+	Price       *decimal.Decimal
 }
 
 type UpdateProductStockParam struct {

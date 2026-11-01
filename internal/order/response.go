@@ -3,26 +3,28 @@ package order
 import (
 	"e-commerce/internal/model"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type OrderItem struct {
 	CloseReason     *model.OrderCloseReason `json:"close_reason"`
-	PayableAmount   float64                 `json:"payable_amount"`
+	PayableAmount   decimal.Decimal         `json:"payable_amount"`
 	PaymentDeadline time.Time               `json:"payment_deadline"`
 	PaidAt          *time.Time              `json:"paid_at"`
 	ClosedAt        *time.Time              `json:"closed_at"`
 
-	SellerID       string  `json:"seller_id"`
-	BuyerID        string  `json:"buyer_id"`
-	ID             string  `json:"id"`
-	ProductID      string  `json:"product_id"`
-	Quantity       int     `json:"quantity"`
-	SnapshotTitle  string  `json:"snapshot_title"`
-	SnapshotPrice  float64 `json:"snapshot_price"`
-	DiscountAmount float64 `json:"discount_amount"`
-	TotalAmount    float64 `json:"total_amount"`
-	Status         int     `json:"status"`
-	CreatedAt      string  `json:"created_at"`
+	SellerID       string          `json:"seller_id"`
+	BuyerID        string          `json:"buyer_id"`
+	ID             string          `json:"id"`
+	ProductID      string          `json:"product_id"`
+	Quantity       int             `json:"quantity"`
+	SnapshotTitle  string          `json:"snapshot_title"`
+	SnapshotPrice  decimal.Decimal `json:"snapshot_price"`
+	DiscountAmount decimal.Decimal `json:"discount_amount"`
+	TotalAmount    decimal.Decimal `json:"total_amount"`
+	Status         int             `json:"status"`
+	CreatedAt      string          `json:"created_at"`
 }
 
 type ListOrdersResponse struct {
@@ -31,11 +33,11 @@ type ListOrdersResponse struct {
 }
 
 type RefundDetailResponse struct {
-	ID            string  `json:"id"`
-	Status        string  `json:"status"`
-	Amount        float64 `json:"amount"`
-	FailureReason string  `json:"failure_reason,omitempty"`
-	UpdatedAt     string  `json:"updated_at"`
+	ID            string          `json:"id"`
+	Status        string          `json:"status"`
+	Amount        decimal.Decimal `json:"amount"`
+	FailureReason string          `json:"failure_reason,omitempty"`
+	UpdatedAt     string          `json:"updated_at"`
 }
 
 type OrderDetailResponse struct {

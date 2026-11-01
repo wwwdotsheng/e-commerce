@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"time"
@@ -24,7 +25,7 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		seller = model.User{ID: uuid.New(), UserName: "seller_" + uuid.NewString()[:8], Email: uuid.NewString() + "@example.com", Password: string(hash), UserType: model.UserTypeSeller, Status: model.UserStatusActive, SellerName: "订单测试商家"}
 		Expect(testDB.Create(&buyer).Error).To(Succeed())
 		Expect(testDB.Create(&seller).Error).To(Succeed())
-		product = model.Product{ID: uuid.New(), SellerID: seller.ID, Name: "下单时商品名称", Description: "测试商品", Price: 59.99, Stock: 10, Status: model.ProductStatusActive}
+		product = model.Product{ID: uuid.New(), SellerID: seller.ID, Name: "下单时商品名称", Description: "测试商品", Price: decimal.RequireFromString("59.99"), Stock: 10, Status: model.ProductStatusActive}
 		Expect(testDB.Create(&product).Error).To(Succeed())
 		r := invariantRequest(http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": buyer.Email, "password": "order-field-test"})
 		Expect(r.Code).To(Equal(errno.OK.FullCode()))
@@ -34,7 +35,7 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(json.Unmarshal(r.Data, &pair)).To(Succeed())
 		token = pair.Token
 	})
-	create := func(discount float64) (model.Order, map[string]interface{}) {
+	create := func(discount decimal.Decimal) (model.Order, map[string]interface{}) {
 		template := model.CouponTemplate{ID: uuid.New(), Name: "订单优惠", Type: model.CouponTypeFixed, DiscountValue: discount, TotalQty: 10, RemainingQty: 10, PerUserLimit: 1, StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive}
 		Expect(testDB.Create(&template).Error).To(Succeed())
 		coupon := model.UserCoupon{ID: uuid.New(), UserID: buyer.ID, TemplateID: template.ID, Status: model.UserCouponStatusUnused, ExpireTime: time.Now().Add(time.Hour)}
@@ -46,9 +47,9 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		return order, body
 	}
 	It("下单保存金额及截止时间，修改商品和幂等重试均不改变订单", func() {
-		order, body := create(10)
-		Expect(order.PayableAmount).To(Equal(109.98))
-		Expect(order.DiscountAmount).To(Equal(float64(10)))
+		order, body := create(decimal.NewFromInt(10))
+		Expect(order.PayableAmount.Equal(decimal.RequireFromString("109.98"))).To(BeTrue())
+		Expect(order.DiscountAmount.Equal(decimal.NewFromInt(10))).To(BeTrue())
 		Expect(order.PaymentDeadline.Sub(order.CreatedAt)).To(Equal(time.Duration(testOrderMQConfig.TTLMs) * time.Millisecond))
 		Expect(order.PaidAt).To(BeNil())
 		Expect(order.ClosedAt).To(BeNil())
@@ -58,8 +59,8 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		var again model.Order
 		Expect(testDB.First(&again, "id = ?", order.ID).Error).To(Succeed())
 		Expect(again.SnapshotTitle).To(Equal("下单时商品名称"))
-		Expect(again.SnapshotPrice).To(Equal(59.99))
-		Expect(again.PayableAmount).To(Equal(109.98))
+		Expect(again.SnapshotPrice.Equal(decimal.RequireFromString("59.99"))).To(BeTrue())
+		Expect(again.PayableAmount.Equal(decimal.RequireFromString("109.98"))).To(BeTrue())
 		Expect(again.PaymentDeadline).To(Equal(order.PaymentDeadline))
 		result := invariantRequest(http.MethodGet, "/api/v1/order/list?page_num=1&page_size=10", token, nil)
 		Expect(result.Code).To(Equal(errno.OK.FullCode()))
@@ -75,12 +76,12 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(list.Orders[0].Total).To(Equal(109.98))
 	})
 	It("优惠超过总额时仍保存零应付金额，不限制原优惠金额", func() {
-		order, _ := create(200)
-		Expect(order.DiscountAmount).To(Equal(float64(200)))
-		Expect(order.PayableAmount).To(BeZero())
+		order, _ := create(decimal.NewFromInt(200))
+		Expect(order.DiscountAmount.Equal(decimal.NewFromInt(200))).To(BeTrue())
+		Expect(order.PayableAmount.IsZero()).To(BeTrue())
 	})
 	It("超时关闭保存原因和时间，重复消费不覆盖", func() {
-		order, _ := create(10)
+		order, _ := create(decimal.NewFromInt(10))
 		Expect(testDB.Model(&order).Update("payment_deadline", time.Now().Add(-time.Second)).Error).To(Succeed())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).To(Succeed())
 		var closed model.Order
@@ -95,10 +96,10 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(testDB.First(&replay, "id = ?", order.ID).Error).To(Succeed())
 		Expect(replay.ClosedAt).To(Equal(closed.ClosedAt))
 		Expect(replay.CloseReason).To(Equal(closed.CloseReason))
-		Expect(replay.PayableAmount).To(Equal(order.PayableAmount))
+		Expect(replay.PayableAmount.Equal(order.PayableAmount)).To(BeTrue())
 	})
 	It("已完成订单不会被超时消息补写关闭时间", func() {
-		order, _ := create(10)
+		order, _ := create(decimal.NewFromInt(10))
 		Expect(testDB.Model(&order).Update("status", model.OrderStatusCompleted).Error).To(Succeed())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).To(Succeed())
 		var saved model.Order
@@ -108,8 +109,9 @@ var _ = Describe("订单金额与状态时间快照", func() {
 		Expect(saved.PaidAt).To(BeNil())
 	})
 	It("退券失败时关闭原因和关闭时间随事务一起回滚", func() {
-		order, _ := create(10)
+		order, _ := create(decimal.NewFromInt(10))
 		Expect(testDB.Model(&model.UserCoupon{}).Where("id = ?", order.UserCouponID).Update("status", model.UserCouponStatusUnused).Error).To(Succeed())
+		Expect(testDB.Model(&model.Order{}).Where("id = ?", order.ID).Update("payment_deadline", time.Now().Add(-time.Second)).Error).To(Succeed())
 		Expect(testOrderService.HandleOrderTimeout(context.Background(), order.ID)).NotTo(Succeed())
 		var saved model.Order
 		Expect(testDB.First(&saved, "id = ?", order.ID).Error).To(Succeed())

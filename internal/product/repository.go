@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -24,7 +25,7 @@ func NewRepository(db *gorm.DB) *Repository {
 type CreateProductData struct {
 	Name        string
 	Description string
-	Price       float64
+	Price       decimal.Decimal
 	Status      *model.ProductStatus
 	Stock       int
 	SellerID    uuid.UUID

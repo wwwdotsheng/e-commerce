@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -39,6 +40,24 @@ func (s *Service) CreateTemplate(ctx context.Context, param CreateTemplateParam)
 	}
 	if !endTime.After(startTime) {
 		return nil, errno.ErrInvalidParam.WithRaw(errors.New("end_time must be after start_time"))
+	}
+	// 金额和折扣率统一先按列宽取两位小数，再校验语义。
+	param.DiscountValue = param.DiscountValue.Round(2)
+	param.DiscountRate = param.DiscountRate.Round(2)
+	param.MaxDeduction = param.MaxDeduction.Round(2)
+	param.MinAmount = param.MinAmount.Round(2)
+	if param.DiscountValue.IsNegative() || param.MaxDeduction.IsNegative() || param.MinAmount.IsNegative() {
+		return nil, errno.ErrInvalidParam.WithRaw(errors.New("coupon amounts must be non-negative"))
+	}
+	switch model.CouponType(param.Type) {
+	case model.CouponTypeFixed:
+		if !param.DiscountValue.IsPositive() {
+			return nil, errno.ErrInvalidParam.WithRaw(errors.New("discount_value must be positive"))
+		}
+	case model.CouponTypePercentage:
+		if !param.DiscountRate.IsPositive() || param.DiscountRate.GreaterThan(decimal.NewFromInt(1)) {
+			return nil, errno.ErrInvalidParam.WithRaw(errors.New("discount_rate must be in (0,1]"))
+		}
 	}
 
 	t := &model.CouponTemplate{
@@ -137,49 +156,49 @@ func (s *Service) ListUserCoupons(ctx context.Context, param ListUserCouponsPara
 }
 
 // UseCoupon 事务内核销优惠券（由 order service 调用）
-func (s *Service) UseCoupon(ctx context.Context, userID uuid.UUID, param UseCouponParam) (float64, error) {
+func (s *Service) UseCoupon(ctx context.Context, userID uuid.UUID, param UseCouponParam) (decimal.Decimal, error) {
 	uc, err := s.repo.GetUserCouponForUpdate(ctx, param.UserCouponID, userID)
 	if err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
 
 	if uc.Status != model.UserCouponStatusUnused {
-		return 0, ErrCouponAlreadyUsed
+		return decimal.Zero, ErrCouponAlreadyUsed
 	}
 	if time.Now().After(uc.ExpireTime) {
-		return 0, ErrCouponAlreadyUsed
+		return decimal.Zero, ErrCouponAlreadyUsed
 	}
 
 	template := uc.Template
 	if template == nil {
-		return 0, ErrTemplateNotFound
+		return decimal.Zero, ErrTemplateNotFound
 	}
-	if template.MinAmount > 0 && param.OrderAmount < template.MinAmount {
-		return 0, ErrCouponMinAmountNotMet
+	if template.MinAmount.IsPositive() && param.OrderAmount.LessThan(template.MinAmount) {
+		return decimal.Zero, ErrCouponMinAmountNotMet
 	}
 
 	deduction := calcDeduction(template, param.OrderAmount)
 
 	if err := s.repo.UseCouponWithVersion(ctx, uc.ID, userID, param.OrderID, uc.Version); err != nil {
-		return 0, err
+		return decimal.Zero, err
 	}
 
-	return deduction, nil
+	return deduction.Round(2), nil
 }
 
-// calcDeduction 计算优惠金额
-func calcDeduction(t *model.CouponTemplate, orderAmount float64) float64 {
+// calcDeduction 计算优惠金额（金额使用 decimal，避免浮点误差）
+func calcDeduction(t *model.CouponTemplate, orderAmount decimal.Decimal) decimal.Decimal {
 	switch t.Type {
 	case model.CouponTypeFixed:
 		return t.DiscountValue
 	case model.CouponTypePercentage:
-		d := orderAmount * t.DiscountRate
-		if t.MaxDeduction > 0 && d > t.MaxDeduction {
+		d := orderAmount.Mul(t.DiscountRate)
+		if t.MaxDeduction.IsPositive() && d.GreaterThan(t.MaxDeduction) {
 			return t.MaxDeduction
 		}
 		return d
 	default:
-		return 0
+		return decimal.Zero
 	}
 }
 

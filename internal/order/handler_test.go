@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 )
 
@@ -112,8 +113,8 @@ func TestGetOrderValidatesOrderID(t *testing.T) {
 		ProductId:     uuid.New(),
 		Quantity:      2,
 		SnapshotTitle: "Test product",
-		SnapshotPrice: 12.5,
-		PayableAmount: 25,
+		SnapshotPrice: decimal.RequireFromString("12.5"),
+		PayableAmount: decimal.NewFromInt(25),
 		Status:        model.OrderStatusProcessing,
 		CreatedAt:     time.Date(2026, 10, 30, 12, 0, 0, 0, time.Local),
 		UpdatedAt:     time.Date(2026, 10, 30, 12, 1, 0, 0, time.Local),
@@ -130,7 +131,7 @@ func TestGetOrderValidatesOrderID(t *testing.T) {
 	if err := json.Unmarshal(got.Data, &detail); err != nil {
 		t.Fatalf("decode detail response: %v", err)
 	}
-	if detail.ID != orderID.String() || detail.SnapshotTitle != "Test product" || detail.TotalAmount != 25 || detail.Refund != nil {
+	if detail.ID != orderID.String() || detail.SnapshotTitle != "Test product" || !detail.TotalAmount.Equal(decimal.NewFromInt(25)) || detail.Refund != nil {
 		t.Fatalf("unexpected detail response: %+v", detail)
 	}
 
@@ -163,8 +164,8 @@ func TestPayOrderPassesIdentityAndReturnsOrder(t *testing.T) {
 		ProductId:     uuid.New(),
 		Quantity:      1,
 		SnapshotTitle: "Paid product",
-		SnapshotPrice: 30,
-		PayableAmount: 30,
+		SnapshotPrice: decimal.NewFromInt(30),
+		PayableAmount: decimal.NewFromInt(30),
 		Status:        model.OrderStatusPaid,
 		PaidAt:        &paidAt,
 		CreatedAt:     time.Date(2026, 10, 31, 12, 0, 0, 0, time.Local),

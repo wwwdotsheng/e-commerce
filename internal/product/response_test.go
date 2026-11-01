@@ -7,6 +7,7 @@ import (
 	"e-commerce/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // 商品列表/详情的时间字段与订单、搜索保持一致，统一输出 RFC3339。
@@ -17,7 +18,7 @@ func TestFormatItemUsesRFC3339(t *testing.T) {
 		ID:        uuid.New(),
 		SellerID:  uuid.New(),
 		Name:      "时间格式测试商品",
-		Price:     10,
+		Price:     decimal.NewFromInt(10),
 		Status:    model.ProductStatusActive,
 		CreatedAt: createdAt,
 	}

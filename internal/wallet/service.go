@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -27,7 +28,7 @@ type Service struct {
 }
 
 type DepositInput struct {
-	Amount         float64
+	Amount         decimal.Decimal
 	IdempotencyKey string
 }
 
@@ -46,7 +47,9 @@ func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID str
 	}()
 
 	logger := clog.L(ctx)
-	if input.Amount <= 0 {
+	// 金额在进入数据库前显式保留两位小数，避免 0.001 这类输入被库列宽静默截断。
+	input.Amount = input.Amount.Round(2)
+	if !input.Amount.IsPositive() {
 		logger.Warn(errno.ErrWalletInvalidDepositAmount.Message,
 			zap.String("user_id", UserID.String()),
 			zap.String("session_id", SessionID),
@@ -72,10 +75,10 @@ func (svc *Service) Deposit(ctx context.Context, UserID uuid.UUID, SessionID str
 	return err
 }
 
-func (svc *Service) GetBalance(ctx context.Context, userID uuid.UUID) (float64, error) {
+func (svc *Service) GetBalance(ctx context.Context, userID uuid.UUID) (decimal.Decimal, error) {
 	balance, err := svc.walletRepo.GetBalance(ctx, userID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, errno.ErrNotFoundRecord
+		return decimal.Zero, errno.ErrNotFoundRecord
 	}
 	return balance, err
 }

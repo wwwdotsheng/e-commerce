@@ -1,18 +1,21 @@
 package coupon
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+)
 
 type CreateTemplateParam struct {
-	Name          string  `json:"name" binding:"required,min=1,max=128"`
-	Type          string  `json:"type" binding:"required,oneof=fixed_amount percentage"`
-	DiscountValue float64 `json:"discount_value" binding:"omitempty,gte=0"`
-	DiscountRate  float64 `json:"discount_rate" binding:"omitempty,gte=0,lte=1"`
-	MaxDeduction  float64 `json:"max_deduction" binding:"omitempty,gte=0"`
-	MinAmount     float64 `json:"min_amount" binding:"omitempty,gte=0"`
-	TotalQty      int     `json:"total_qty" binding:"required,gte=1"`
-	PerUserLimit  int     `json:"per_user_limit" binding:"omitempty,gte=1"`
-	StartTime     string  `json:"start_time" binding:"required"`
-	EndTime       string  `json:"end_time" binding:"required"`
+	Name          string          `json:"name" binding:"required,min=1,max=128"`
+	Type          string          `json:"type" binding:"required,oneof=fixed_amount percentage"`
+	DiscountValue decimal.Decimal `json:"discount_value"`
+	DiscountRate  decimal.Decimal `json:"discount_rate"`
+	MaxDeduction  decimal.Decimal `json:"max_deduction"`
+	MinAmount     decimal.Decimal `json:"min_amount"`
+	TotalQty      int             `json:"total_qty" binding:"required,gte=1"`
+	PerUserLimit  int             `json:"per_user_limit" binding:"omitempty,gte=1"`
+	StartTime     string          `json:"start_time" binding:"required"`
+	EndTime       string          `json:"end_time" binding:"required"`
 	Publisher     uuid.UUID
 }
 
@@ -30,5 +33,5 @@ type ListUserCouponsParam struct {
 type UseCouponParam struct {
 	UserCouponID uuid.UUID
 	OrderID      uuid.UUID
-	OrderAmount  float64
+	OrderAmount  decimal.Decimal
 }

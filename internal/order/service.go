@@ -11,10 +11,10 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -86,7 +86,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			return err
 		}
 
-		var discountAmount float64
+		var discountAmount decimal.Decimal
 		var userCouponID *uuid.UUID
 
 		if param.UserCouponID != uuid.Nil {
@@ -107,8 +107,8 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 				return coupon.ErrTemplateNotFound
 			}
 
-			orderAmount := p.Price * float64(param.Quantity)
-			if template.MinAmount > 0 && orderAmount < template.MinAmount {
+			orderAmount := p.Price.Mul(decimal.NewFromInt(int64(param.Quantity)))
+			if template.MinAmount.IsPositive() && orderAmount.LessThan(template.MinAmount) {
 				return coupon.ErrCouponMinAmountNotMet
 			}
 
@@ -122,7 +122,7 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 			userCouponID = &couponID
 		}
 
-		discountAmount = math.Round(discountAmount*100) / 100
+		discountAmount = discountAmount.Round(2)
 		now := time.Now()
 		order = &model.Order{
 			PayableAmount:   calculatePayableAmount(p.Price, param.Quantity, discountAmount),
@@ -179,19 +179,19 @@ func (svc *Service) CreateOrder(ctx context.Context, userID uuid.UUID, param Cre
 	return nil
 }
 
-// calcCouponDeduction 计算优惠金额
-func calcCouponDeduction(t *model.CouponTemplate, orderAmount float64) float64 {
+// calcCouponDeduction 计算优惠金额（金额使用 decimal，避免浮点误差）
+func calcCouponDeduction(t *model.CouponTemplate, orderAmount decimal.Decimal) decimal.Decimal {
 	switch t.Type {
 	case model.CouponTypeFixed:
 		return t.DiscountValue
 	case model.CouponTypePercentage:
-		d := orderAmount * t.DiscountRate
-		if t.MaxDeduction > 0 && d > t.MaxDeduction {
+		d := orderAmount.Mul(t.DiscountRate)
+		if t.MaxDeduction.IsPositive() && d.GreaterThan(t.MaxDeduction) {
 			return t.MaxDeduction
 		}
 		return d
 	default:
-		return 0
+		return decimal.Zero
 	}
 }
 
@@ -205,8 +205,13 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 	}()
 
 	// Closing, inventory restoration and coupon return must commit together.
-	return database.ExecuteTransaction(ctx, svc.db, func(txCtx context.Context) error {
+	var notDue *model.Order
+	err = database.ExecuteTransaction(ctx, svc.db, func(txCtx context.Context) error {
 		o, err := svc.repo.HandleOrderTimeout(txCtx, orderID)
+		if errors.Is(err, errOrderTimeoutNotDue) {
+			notDue = o
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -223,6 +228,16 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if notDue != nil {
+		// 提前到达的消息重新投递到延迟队列，等截止时间过后再关闭，绝不提前关单。
+		if err := svc.repo.PublishTimeoutMessage(ctx, notDue.ID); err != nil {
+			return fmt.Errorf("requeue early timeout message: %w", err)
+		}
+	}
+	return nil
 }
 
 func (svc *Service) ListOrders(ctx context.Context, param ListOrdersParam) ([]*model.Order, int64, error) {
@@ -263,7 +278,7 @@ func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID st
 			return errno.ErrOrderPaymentExpired
 		}
 
-		if current.PayableAmount > 0 {
+		if current.PayableAmount.IsPositive() {
 			if err := svc.walletRepo.DebitForOrderPayment(txCtx, userID, current.PayableAmount, sessionID, current.ID); err != nil {
 				if errors.Is(err, wallet.ErrInsufficientBalance) {
 					return errno.ErrWalletBalanceInsufficient
@@ -292,9 +307,13 @@ func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID st
 }
 
 // calculatePayableAmount fixes the amount at order creation, retaining the zero floor.
-func calculatePayableAmount(unitPrice float64, quantity int, discount float64) float64 {
-	gross := math.Round(unitPrice*float64(quantity)*100) / 100
-	return math.Max(0, math.Round((gross-math.Round(discount*100)/100)*100)/100)
+func calculatePayableAmount(unitPrice decimal.Decimal, quantity int, discount decimal.Decimal) decimal.Decimal {
+	gross := unitPrice.Mul(decimal.NewFromInt(int64(quantity))).Round(2)
+	payable := gross.Sub(discount.Round(2)).Round(2)
+	if payable.IsNegative() {
+		return decimal.Zero
+	}
+	return payable
 }
 
 // classifyPaymentError 把支付事务里的内部错误翻译成对外业务错误，并给出指标分类。

@@ -3,37 +3,39 @@ package coupon
 import (
 	"e-commerce/internal/model"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type TemplateItem struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	Type          string  `json:"type"`
-	DiscountValue float64 `json:"discount_value"`
-	DiscountRate  float64 `json:"discount_rate"`
-	MaxDeduction  float64 `json:"max_deduction"`
-	MinAmount     float64 `json:"min_amount"`
-	TotalQty      int     `json:"total_qty"`
-	RemainingQty  int     `json:"remaining_qty"`
-	PerUserLimit  int     `json:"per_user_limit"`
-	StartTime     string  `json:"start_time"`
-	EndTime       string  `json:"end_time"`
-	Status        string  `json:"status"`
-	CreatedAt     string  `json:"created_at"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	DiscountValue decimal.Decimal `json:"discount_value"`
+	DiscountRate  decimal.Decimal `json:"discount_rate"`
+	MaxDeduction  decimal.Decimal `json:"max_deduction"`
+	MinAmount     decimal.Decimal `json:"min_amount"`
+	TotalQty      int             `json:"total_qty"`
+	RemainingQty  int             `json:"remaining_qty"`
+	PerUserLimit  int             `json:"per_user_limit"`
+	StartTime     string          `json:"start_time"`
+	EndTime       string          `json:"end_time"`
+	Status        string          `json:"status"`
+	CreatedAt     string          `json:"created_at"`
 }
 
 type UserCouponItem struct {
-	ID            string  `json:"id"`
-	TemplateID    string  `json:"template_id"`
-	TemplateName  string  `json:"template_name"`
-	Type          string  `json:"type"`
-	DiscountValue float64 `json:"discount_value"`
-	DiscountRate  float64 `json:"discount_rate"`
-	MaxDeduction  float64 `json:"max_deduction"`
-	MinAmount     float64 `json:"min_amount"`
-	Status        string  `json:"status"`
-	ExpireTime    string  `json:"expire_time"`
-	CreatedAt     string  `json:"created_at"`
+	ID            string          `json:"id"`
+	TemplateID    string          `json:"template_id"`
+	TemplateName  string          `json:"template_name"`
+	Type          string          `json:"type"`
+	DiscountValue decimal.Decimal `json:"discount_value"`
+	DiscountRate  decimal.Decimal `json:"discount_rate"`
+	MaxDeduction  decimal.Decimal `json:"max_deduction"`
+	MinAmount     decimal.Decimal `json:"min_amount"`
+	Status        string          `json:"status"`
+	ExpireTime    string          `json:"expire_time"`
+	CreatedAt     string          `json:"created_at"`
 }
 
 type ListUserCouponsResponse struct {

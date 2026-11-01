@@ -41,6 +41,10 @@ func (svc *Service) GetProduct(ctx context.Context, id uuid.UUID) (*model.Produc
 }
 
 func (svc *Service) CreateProduct(ctx context.Context, param CreateProductParam) error {
+	param.Price = param.Price.Round(2)
+	if !param.Price.IsPositive() {
+		return errno.ErrInvalidParam
+	}
 	var seller model.User
 	if err := svc.db.WithContext(ctx).First(&seller, "id = ?", param.SellerID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -156,7 +160,11 @@ func (svc *Service) UpdateProductProperty(ctx context.Context, param UpdateProdu
 		updateData["description"] = *param.Description
 	}
 	if param.Price != nil {
-		updateData["price"] = *param.Price
+		price := param.Price.Round(2)
+		if !price.IsPositive() {
+			return errno.ErrInvalidParam
+		}
+		updateData["price"] = price
 	}
 
 	err := svc.repo.Update(ctx, UpdateProductPropertyData{

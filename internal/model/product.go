@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -23,17 +24,17 @@ func (s ProductStatus) IsValid() bool {
 }
 
 type Product struct {
-	ID          uuid.UUID     `gorm:"column:id;type:uuid;primaryKey"`
-	SellerID    uuid.UUID     `gorm:"column:seller_id;type:uuid;not null"`
-	Name        string        `gorm:"column:name;type:varchar(255);not null"`
-	Description string        `gorm:"column:description;type:text;not null"`
-	Price       float64       `gorm:"column:price;type:decimal(16,2);not null"`
-	Stock       int           `gorm:"column:stock;not null;default:0;check:stock >= 0"`
-	FrozenStock int           `gorm:"column:frozen_stock;not null;default:0;check:stock >= 0"`
-	Status      ProductStatus `gorm:"column:status;type:varchar(16);not null;default:'active'"`
-	Version     int           `gorm:"column:version;not null;default:0"`
-	CreatedAt   time.Time     `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt   time.Time     `gorm:"column:updated_at;autoUpdateTime"`
+	ID          uuid.UUID       `gorm:"column:id;type:uuid;primaryKey"`
+	SellerID    uuid.UUID       `gorm:"column:seller_id;type:uuid;not null"`
+	Name        string          `gorm:"column:name;type:varchar(255);not null"`
+	Description string          `gorm:"column:description;type:text;not null"`
+	Price       decimal.Decimal `gorm:"column:price;type:decimal(16,2);not null"`
+	Stock       int             `gorm:"column:stock;not null;default:0;check:stock >= 0"`
+	FrozenStock int             `gorm:"column:frozen_stock;not null;default:0;check:stock >= 0"`
+	Status      ProductStatus   `gorm:"column:status;type:varchar(16);not null;default:'active'"`
+	Version     int             `gorm:"column:version;not null;default:0"`
+	CreatedAt   time.Time       `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt   time.Time       `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (Product) TableName() string {

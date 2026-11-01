@@ -6,6 +6,7 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"strings"
@@ -108,7 +109,7 @@ func (svc *Service) ResubmitSellerApplication(ctx context.Context, id uuid.UUID,
 // AccountProfile exposes only the authenticated account's own balance.
 type AccountProfile struct {
 	ApplicationView
-	Balance float64 `json:"balance"`
+	Balance decimal.Decimal `json:"balance"`
 }
 
 func (svc *Service) GetCurrentAccount(ctx context.Context, id uuid.UUID) (*AccountProfile, error) {

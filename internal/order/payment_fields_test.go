@@ -5,25 +5,27 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestPayableAmount(t *testing.T) {
 	cases := []struct {
-		name           string
-		price          float64
-		qty            int
-		discount, want float64
+		name        string
+		price, want decimal.Decimal
+		discount    decimal.Decimal
+		qty         int
 	}{
-		{"无优惠", 59.99, 2, 0, 119.98},
-		{"正常优惠", 59.99, 2, 10, 109.98},
-		{"优惠超过商品总额时应付为零", 10, 1, 20, 0},
-		{"优惠等于商品总额时应付为零", 10, 1, 10, 0},
-		{"金额保留两位小数", 10, 1, 1.236, 8.76},
+		{"无优惠", decimal.RequireFromString("59.99"), decimal.RequireFromString("119.98"), decimal.Zero, 2},
+		{"正常优惠", decimal.RequireFromString("59.99"), decimal.RequireFromString("109.98"), decimal.RequireFromString("10"), 2},
+		{"优惠超过商品总额时应付为零", decimal.RequireFromString("10"), decimal.Zero, decimal.RequireFromString("20"), 1},
+		{"优惠等于商品总额时应付为零", decimal.RequireFromString("10"), decimal.Zero, decimal.RequireFromString("10"), 1},
+		{"金额保留两位小数", decimal.RequireFromString("10"), decimal.RequireFromString("8.76"), decimal.RequireFromString("1.236"), 1},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := calculatePayableAmount(c.price, c.qty, c.discount); got != c.want {
-				t.Fatalf("应付金额=%v，预期=%v", got, c.want)
+			if got := calculatePayableAmount(c.price, c.qty, c.discount); !got.Equal(c.want) {
+				t.Fatalf("应付金额=%s，预期=%s", got, c.want)
 			}
 		})
 	}
@@ -31,9 +33,16 @@ func TestPayableAmount(t *testing.T) {
 func TestOrderPaymentResponse(t *testing.T) {
 	t.Run("响应使用已保存金额而非重新计算", func(t *testing.T) {
 		deadline := time.Date(2026, 10, 31, 12, 30, 0, 0, time.UTC)
-		o := &model.Order{SnapshotPrice: 999, Quantity: 2, DiscountAmount: 0, PayableAmount: 109.98, PaymentDeadline: deadline}
+		o := &model.Order{
+			SnapshotPrice:   decimal.RequireFromString("999"),
+			Quantity:        2,
+			DiscountAmount:  decimal.Zero,
+			PayableAmount:   decimal.RequireFromString("109.98"),
+			PaymentDeadline: deadline,
+		}
 		got := FormatOrderItem(o)
-		if got.PayableAmount != 109.98 || got.TotalAmount != 109.98 || !got.PaymentDeadline.Equal(deadline) {
+		want := decimal.RequireFromString("109.98")
+		if !got.PayableAmount.Equal(want) || !got.TotalAmount.Equal(want) || !got.PaymentDeadline.Equal(deadline) {
 			t.Fatalf("订单金额快照不一致: %+v", got)
 		}
 		raw, err := json.Marshal(got)

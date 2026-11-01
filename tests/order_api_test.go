@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -133,7 +134,7 @@ var _ = Describe("OrderApi", Ordered, func() {
 			err := testDB.Where("idempotency_key = ?", key).First(&order).Error
 			Expect(err).ToNot(HaveOccurred())
 			Expect(order.SnapshotTitle).To(Equal("Test Item"))
-			Expect(order.SnapshotPrice).To(Equal(99.99))
+			Expect(order.SnapshotPrice.Equal(decimal.RequireFromString("99.99"))).To(BeTrue())
 			Expect(order.Quantity).To(Equal(2))
 			Expect(order.Status).To(Equal(model.OrderStatusProcessing))
 

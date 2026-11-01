@@ -3,16 +3,18 @@ package product
 import (
 	"e-commerce/internal/model"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 type Item struct {
-	ID         string  `json:"id"`
-	SellerID   string  `json:"seller_id"`
-	SellerName string  `json:"seller_name"`
-	Name       string  `json:"name"`
-	Price      float64 `json:"price"`
-	Status     string  `json:"status"`
-	CreatedAt  string  `json:"created_at"`
+	ID         string          `json:"id"`
+	SellerID   string          `json:"seller_id"`
+	SellerName string          `json:"seller_name"`
+	Name       string          `json:"name"`
+	Price      decimal.Decimal `json:"price"`
+	Status     string          `json:"status"`
+	CreatedAt  string          `json:"created_at"`
 }
 type Detail struct {
 	Item

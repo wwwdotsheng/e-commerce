@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 type Handler struct {
@@ -16,8 +17,8 @@ type Handler struct {
 }
 
 type DepositDTO struct {
-	Amount         float64 `json:"amount" binding:"required"`
-	IdempotencyKey string  `json:"idempotency_key" binding:"required,max=64"`
+	Amount         decimal.Decimal `json:"amount"`
+	IdempotencyKey string          `json:"idempotency_key" binding:"required,max=64"`
 }
 
 func NewHandler(wallSvc *Service) *Handler {
@@ -77,7 +78,7 @@ func (h *Handler) Deposit(c *gin.Context) {
 }
 
 type BalanceResponse struct {
-	Balance float64 `json:"balance"`
+	Balance decimal.Decimal `json:"balance"`
 }
 
 func (h *Handler) GetBalance(c *gin.Context) {

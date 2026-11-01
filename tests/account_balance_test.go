@@ -27,7 +27,7 @@ var _ = Describe("买家和商家独立余额", func() {
 			Expect(testDB.Where("email = ?", email).First(&user).Error).To(Succeed())
 			var wallet model.UserWallet
 			Expect(testDB.First(&wallet, "user_id = ?", user.ID).Error).To(Succeed())
-			Expect(wallet.Balance).To(BeZero())
+			Expect(wallet.Balance.IsZero()).To(BeTrue())
 			r = invariantRequest(http.MethodPost, "/api/v1/auth/login", "", map[string]string{"email": email, "password": "wallet-test-password"})
 			Expect(r.Code).To(Equal(errno.OK.FullCode()))
 			var pair struct {

@@ -7,6 +7,7 @@ import (
 	"e-commerce/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 )
 
 // 订单响应里的时间字段统一走 RFC3339，与 payment_deadline / paid_at / closed_at
@@ -23,8 +24,8 @@ func TestFormatOrderTimesUseRFC3339(t *testing.T) {
 		ProductId:     uuid.New(),
 		Quantity:      1,
 		SnapshotTitle: "format test",
-		SnapshotPrice: 10,
-		PayableAmount: 10,
+		SnapshotPrice: decimal.NewFromInt(10),
+		PayableAmount: decimal.NewFromInt(10),
 		Status:        model.OrderStatusProcessing,
 		CreatedAt:     createdAt,
 		UpdatedAt:     updatedAt,
