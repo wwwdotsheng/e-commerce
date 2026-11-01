@@ -38,6 +38,10 @@ type AppSection struct {
 	// These switches control diagnostics directly; no environment-name branches.
 	PrintConfig  bool `mapstructure:"print_config"`
 	ExposeDevMsg bool `mapstructure:"expose_dev_msg"`
+
+	// BusinessTimeZone 解释请求里不带时区的“本地墙上时间”（如优惠券起止时间）。
+	// 只影响应用层解析，不改变数据库会话时区 database.time_zone。
+	BusinessTimeZone string `mapstructure:"business_time_zone"`
 }
 
 type DatabaseSection struct {
@@ -127,7 +131,7 @@ type LoadOptions struct {
 
 func Defaults() AppConfig {
 	return AppConfig{
-		App:           AppSection{Name: "ecommerce-api", Port: 8080, GinMode: "release"},
+		App:           AppSection{Name: "ecommerce-api", Port: 8080, GinMode: "release", BusinessTimeZone: "Asia/Shanghai"},
 		Database:      DatabaseSection{Host: "localhost", Port: 5432, User: "postgres", DBName: "ecommerce", SSLMode: "disable", MaxIdleConns: 20, MaxOpenConns: 50, ConnMaxLifetime: 10, TimeZone: "Asia/Shanghai", LogLevel: "info"},
 		Redis:         RedisSection{Host: "localhost", Port: 6379, PoolSize: 10},
 		RabbitMQ:      RabbitMQSection{Host: "localhost", Port: 5672, User: "ecommerce"},
@@ -297,6 +301,10 @@ func (c *AppConfig) Validate() error {
 		required("app.ssl_crt_path", c.App.SSLCrtPath)
 		required("app.ssl_key_path", c.App.SSLKeyPath)
 	}
+	required("app.business_time_zone", c.App.BusinessTimeZone)
+	if _, err := c.BusinessLocation(); err != nil {
+		problems = append(problems, errors.New("app.business_time_zone must be a valid timezone"))
+	}
 	required("database.host", c.Database.Host)
 	port("database.port", c.Database.Port)
 	required("database.user", c.Database.User)
@@ -379,6 +387,11 @@ func (c AppConfig) Redacted() AppConfig {
 	c.RabbitMQ.Password = mask(c.RabbitMQ.Password)
 	c.Auth.TokenSecret = mask(c.Auth.TokenSecret)
 	return c
+}
+
+// BusinessLocation 返回不带时区的时间输入应使用的业务时区。
+func (c *AppConfig) BusinessLocation() (*time.Location, error) {
+	return time.LoadLocation(c.App.BusinessTimeZone)
 }
 
 func (c *AppConfig) ImageRef(image string) string {

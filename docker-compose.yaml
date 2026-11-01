@@ -24,8 +24,11 @@ services:
     command:
     - ./main
     environment:
+      # 进程时区显式指定，避免依赖基础镜像默认值。
+      TZ: Asia/Shanghai
       CONFIG_PATH: /app/configs/config.yaml
       APP_APP_GIN_MODE: ${APP_APP_GIN_MODE:-release}
+      APP_APP_BUSINESS_TIME_ZONE: ${APP_APP_BUSINESS_TIME_ZONE:-Asia/Shanghai}
       APP_DATABASE_HOST: postgres
       APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Set APP_DATABASE_PASSWORD}
       APP_RABBITMQ_HOST: rabbitmq

@@ -29,6 +29,10 @@ spec:
             - configMapRef:
                 name: ecommerce-config
           env:
+            # 显式指定进程时区，避免行为依赖基础镜像的默认值；
+            # 无时区输入按 APP_APP_BUSINESS_TIME_ZONE 解释。
+            - name: TZ
+              value: "Asia/Shanghai"
             - name: CONFIG_PATH
               value: ""
             - name: APP_DATABASE_PASSWORD

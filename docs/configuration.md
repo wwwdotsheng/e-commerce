@@ -40,6 +40,10 @@ AppEnv / app.env / APP_APP_ENV 已移除；旧名称出现时会明确报错，�
 修改 TTL 时必须迁移 RabbitMQ 已声明队列，不能直接用不同参数重声明旧队列。
 database.conn_max_lifetime 保留原有整数语义，单位为分钟；此轮未改变它的运行含义。
 
+app.business_time_zone 用于解释请求里不带时区的“本地墙上时间”（默认 Asia/Shanghai），
+与 database.time_zone（数据库会话时区）是两个独立设置。部署时进程时区 TZ 应与它一致，
+启动日志会在两者不一致时告警；携带时区偏移的 RFC3339 时间不受该配置影响。
+
 ## Docker Compose
 
 需要 Docker Compose 2.24+（支持可选 env_file）和 Docker。

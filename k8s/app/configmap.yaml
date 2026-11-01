@@ -14,6 +14,7 @@ data:
   APP_APP_SSL_KEY_PATH: ""
   APP_APP_PRINT_CONFIG: "false"
   APP_APP_EXPOSE_DEV_MSG: "false"
+  APP_APP_BUSINESS_TIME_ZONE: "Asia/Shanghai"
   APP_DATABASE_HOST: "postgres"
   APP_DATABASE_PORT: "5432"
   APP_DATABASE_USER: "postgres"

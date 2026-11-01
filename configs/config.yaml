@@ -9,6 +9,8 @@ app:
   ssl_key_path: ""
   print_config: false
   expose_dev_msg: false
+  # 无时区时间输入（如优惠券起止时间）按此时区解释；不影响 database.time_zone。
+  business_time_zone: Asia/Shanghai
 
 database:
   host: localhost
