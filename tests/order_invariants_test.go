@@ -380,6 +380,7 @@ var _ = Describe("Order invariants", func() {
 		key := uuid.NewString()
 		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
 		o := findOrder(key)
+		expireOrder(o.ID)
 		name := "fail_coupon_" + uuid.NewString()[:8]
 		Expect(testDB.Exec(fmt.Sprintf("CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected coupon failure'; END $$", name)).Error).To(Succeed())
 		Expect(testDB.Exec(fmt.Sprintf("CREATE TRIGGER %s BEFORE UPDATE ON user_coupon FOR EACH ROW WHEN (OLD.id = '%s'::uuid) EXECUTE FUNCTION %s()", name, uc.ID, name)).Error).To(Succeed())
