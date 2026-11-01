@@ -95,6 +95,14 @@ func (repo *Repository) createStockChangeLog(ctx context.Context, productID uuid
 }
 
 // UpdateStock 更新商品库存（校验 seller_id）
+// classifyStockUpdateMiss 区分库存更新未命中的两种原因：商品不存在/非本店，还是库存不足。
+func classifyStockUpdateMiss(productExists bool) *errno.Errno {
+	if !productExists {
+		return errno.ErrProductNotFound
+	}
+	return errno.ErrProductStockInsufficient
+}
+
 func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) error {
 	db := repo.GetDB(ctx).Model(&model.Product{}).Where("id = ? and seller_id = ?", data.ProductID, data.SellerID)
 	if data.Quantity < 0 {
@@ -127,10 +135,7 @@ func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) e
 			Count(&exists).Error; err != nil {
 			return err
 		}
-		if exists == 0 {
-			return errno.ErrProductNotFound
-		}
-		return errno.ErrProductStockInsufficient
+		return classifyStockUpdateMiss(exists > 0)
 	}
 
 	return repo.createStockChangeLog(ctx, data.ProductID, data.Quantity, result.Stock-data.Quantity, data.Reason)
