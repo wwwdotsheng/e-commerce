@@ -1,7 +1,8 @@
 # ═══════════════════════════════════════════════════════════════
 # e-commerce 的 GitLab CI
 #
-#   test         go vet + ginkgo -race（testcontainers 依赖 docker.sock）
+#   unit         go vet + go test -race（内部包，无容器）
+#   integration  ginkgo -race + testcontainers（依赖 docker.sock）
 #   build-image  rootless BuildKit 构建并推送镜像
 #
 # 仓库里不写任何内网地址，下面这些值全部放在
@@ -33,19 +34,47 @@ variables:
   GOPROXY: https://goproxy.cn,direct
   GOSUMDB: "off"
   DOCKER_CONFIG: /tmp/.docker
+  # 把 Go 的两级缓存放在项目目录里，交给 GitLab cache 在 job 之间复用；
+  # 不设置的话 docker executor 每次都是冷编译（vet 和 -race 各编译一遍依赖图）。
+  GOMODCACHE: "$CI_PROJECT_DIR/.cache/go-mod"
+  GOCACHE: "$CI_PROJECT_DIR/.cache/go-build"
+
+# 单元测试和集成测试共用同一份依赖与构建缓存。
+.go-cache:
+  cache:
+    key:
+      files:
+        - go.mod
+        - go.sum
+    paths:
+      - .cache/go-mod
+      - .cache/go-build
 
 # ─────────────────────────────────────────────────────────────
-# 1. 测试
+# 1. 单元测试（不依赖容器，先给反馈）
 # ─────────────────────────────────────────────────────────────
-test:
+unit:
   stage: test
   # 用 Debian 版而不是 alpine 版：-race 需要 cgo + gcc
   image: "${GOLANG_IMAGE}"
+  extends: .go-cache
+  interruptible: true
   script:
     - go version
     - go mod download
     - go vet ./...
     - go test -race ./internal/auth ./internal/config ./internal/order
+
+# ─────────────────────────────────────────────────────────────
+# 2. 集成测试（testcontainers 起 PG/Redis/RabbitMQ）
+# ─────────────────────────────────────────────────────────────
+integration:
+  stage: test
+  image: "${GOLANG_IMAGE}"
+  extends: .go-cache
+  interruptible: true
+  script:
+    - go mod download
     - go install github.com/onsi/ginkgo/v2/ginkgo
     # The integration suite applies versioned SQL from migrations/ to a disposable
     # PostgreSQL container before exercising the API.
@@ -59,7 +88,6 @@ test:
       APP_DATABASE_LOG_LEVEL=error \
       CONFIG_PATH=../configs/config.yaml \
       "$(go env GOPATH)/bin/ginkgo" --race --randomize-all --vv --junit-report=integration.xml --output-dir=test-results ./tests
-
   artifacts:
     when: always
     paths:
@@ -91,7 +119,7 @@ api-acceptance:
       - test-results/
 
 # ─────────────────────────────────────────────────────────────
-# 2. 构建并推送镜像（只在 master / product 上跑）
+# 3. 构建并推送镜像（只在 master / product 上跑，且要等两个测试 job 都过）
 # ─────────────────────────────────────────────────────────────
 build-image:
   stage: build
@@ -100,7 +128,9 @@ build-image:
     # ★ 这个镜像 ENTRYPOINT 就是 buildkitd，不清空会和挂进来的 socket 撞车
     entrypoint: [""]
   needs:
-    - job: test
+    - job: unit
+      artifacts: false
+    - job: integration
       artifacts: false
   rules:
     - if: '$CI_COMMIT_BRANCH == "master" || $CI_COMMIT_BRANCH == "product"'
