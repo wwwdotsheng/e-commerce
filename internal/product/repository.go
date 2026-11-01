@@ -5,7 +5,6 @@ import (
 	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/database"
 	"e-commerce/pkg/errno"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -122,7 +121,16 @@ func (repo *Repository) UpdateStock(ctx context.Context, data UpdateStockData) e
 	}
 
 	if result.ID == uuid.Nil {
-		return errors.New("update failed: insufficient stock or product not found")
+		var exists int64
+		if err := repo.GetDB(ctx).Model(&model.Product{}).
+			Where("id = ? AND seller_id = ?", data.ProductID, data.SellerID).
+			Count(&exists).Error; err != nil {
+			return err
+		}
+		if exists == 0 {
+			return errno.ErrProductNotFound
+		}
+		return errno.ErrProductStockInsufficient
 	}
 
 	return repo.createStockChangeLog(ctx, data.ProductID, data.Quantity, result.Stock-data.Quantity, data.Reason)
