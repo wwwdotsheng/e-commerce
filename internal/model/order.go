@@ -24,6 +24,8 @@ const (
 	OrderStatusTimeout OrderStatus = 3
 	// OrderStatusPaid 余额支付成功，paid_at 同时写入；等待履约或退款。
 	OrderStatusPaid OrderStatus = 4
+	// OrderStatusRefunded 全额退款成功（退款记录见 refunds 表）。
+	OrderStatusRefunded OrderStatus = 5
 )
 
 // OrderCloseReason is a stable reason code persisted as varchar.

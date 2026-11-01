@@ -39,6 +39,8 @@ type handlerOrderServiceStub struct {
 	payErr       error
 	payCalled    bool
 	gotSessionID string
+
+	refund *model.Refund
 }
 
 func (s *handlerOrderServiceStub) CreateOrder(context.Context, uuid.UUID, CreateOrderParam) error {
@@ -64,6 +66,20 @@ func (s *handlerOrderServiceStub) PayOrder(_ context.Context, userID uuid.UUID, 
 	return s.order, s.payErr
 }
 
+func (s *handlerOrderServiceStub) ApplyRefund(context.Context, uuid.UUID, uuid.UUID, string) (*model.Refund, error) {
+	if s.refund == nil {
+		return &model.Refund{ID: uuid.New(), Status: model.RefundStatusProcessing, Amount: decimal.Zero, UpdatedAt: time.Now()}, nil
+	}
+	return s.refund, nil
+}
+
+func (s *handlerOrderServiceStub) GetRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Refund, error) {
+	if s.refund == nil {
+		return nil, errno.ErrNotFoundRecord
+	}
+	return s.refund, nil
+}
+
 func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -82,6 +98,7 @@ func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	r.GET("/orders/:id", h.GetOrderByID)
 	r.POST("/orders/:id/pay", h.PayOrder)
 	r.POST("/orders/:id/refund", h.ApplyRefund)
+	r.GET("/orders/:id/refund", h.GetRefund)
 	return r, service
 }
 
@@ -222,7 +239,7 @@ func TestApplyRefundValidatesOrderIDAndIdempotencyKey(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "valid input reaches placeholder", id: validID, body: `{"idempotency_key":"refund-key-1"}`, want: errno.ErrInternalServer.FullCode()},
+		{name: "valid input reaches service", id: validID, body: `{"idempotency_key":"refund-key-1"}`, want: errno.OK.FullCode()},
 		{name: "invalid UUID is rejected", id: "not-a-uuid", body: `{"idempotency_key":"refund-key-1"}`, want: errno.ErrInvalidParam.FullCode()},
 		{name: "missing idempotency key is rejected", id: validID, body: `{}`, want: errno.ErrInvalidParam.FullCode()},
 		{name: "malformed JSON is rejected", id: validID, body: `{`, want: errno.ErrInvalidParam.FullCode()},

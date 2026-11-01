@@ -450,7 +450,11 @@ paths:
   /order/{id}/refund:
     post:
       tags: [订单]
-      summary: 申请订单全额退款（接口占位）
+      summary: 申请订单全额退款（模拟渠道）
+      description: |
+        仅已支付订单可以申请；一个订单最多一条退款记录。
+        重复申请返回已有记录；failed 状态下使用新的 idempotency_key 可重新提交重试；
+        confirming 表示渠道结果不明，通过 GET 查询确认，不重复创建。
       operationId: ApplyOrderRefund
       security:
         - AccessTokenAuth: []
@@ -469,11 +473,32 @@ paths:
               $ref: '#/components/schemas/ApplyRefundRequest'
       responses:
         '200':
-          description: 统一 API 响应；业务逻辑尚未实现
+          description: 统一 API 响应；data 为当前退款记录
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApiResponse'
+                $ref: '#/components/schemas/RefundResponse'
+    get:
+      tags: [订单]
+      summary: 查询订单退款状态
+      description: 仅订单买家可查询；confirming 状态会顺带向渠道确认一次结果。
+      operationId: GetOrderRefund
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 统一 API 响应；无退款记录时返回 A00002
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundResponse'
 
   /coupon/template:
     post:
@@ -949,7 +974,7 @@ components:
           description: 关闭原因码，仅超时关闭时写入
         status:
           type: integer
-          description: "0=处理中 1=已完成 2=已取消 3=超时 4=已支付"
+          description: "0=处理中 1=已完成 2=已取消 3=超时 4=已支付 5=已退款"
         created_at:
           type: string
           format: date-time
@@ -998,13 +1023,20 @@ components:
           format: uuid
         status:
           type: string
-          enum: [pending, processing, succeeded, failed, confirming]
+          enum: [processing, succeeded, failed, confirming]
+          description: processing=处理中 succeeded=成功 failed=明确失败 confirming=结果不明待确认
         amount:
           type: number
-          format: float
+          format: double
+          description: 全额退款金额，等于订单下单时保存的应付金额
         failure_reason:
           type: string
           description: 退款明确失败时的原因
+        refunded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 退款成功时间；失败/确认中为 null
         updated_at:
           type: string
           format: date-time

@@ -32,6 +32,8 @@ var (
 	ErrOrderPaymentExpired       = &Errno{Type: "A", Domain: "05", Code: "103", Message: "订单已超过支付截止时间"}
 	// ErrOrderPaymentConflict 历史数据里用户充值键占用了订单流水键，订单无法完成支付，需要人工处理。
 	ErrOrderPaymentConflict = &Errno{Type: "A", Domain: "05", Code: "104", Message: "订单支付流水冲突，请联系客服处理"}
+	// ErrOrderRefundStatusInvalid 只有已支付订单可以申请全额退款。
+	ErrOrderRefundStatusInvalid = &Errno{Type: "A", Domain: "05", Code: "105", Message: "订单当前状态不可退款"}
 
 	ErrInternalServer = &Errno{Type: "B", Domain: "01", Code: "001", Message: "系统繁忙，请稍后重试"}
 	ErrDatabase       = &Errno{Type: "B", Domain: "01", Code: "002", Message: "数据库操作异常"}

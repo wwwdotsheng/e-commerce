@@ -37,6 +37,7 @@ type RefundDetailResponse struct {
 	Status        string          `json:"status"`
 	Amount        decimal.Decimal `json:"amount"`
 	FailureReason string          `json:"failure_reason,omitempty"`
+	RefundedAt    *string         `json:"refunded_at,omitempty"`
 	UpdatedAt     string          `json:"updated_at"`
 }
 
@@ -61,6 +62,22 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 		TotalAmount:    o.PayableAmount,
 		Status:         int(o.Status),
 		CreatedAt:      o.CreatedAt.Format(time.RFC3339),
+	}
+}
+
+func FormatRefund(r *model.Refund) *RefundDetailResponse {
+	var refundedAt *string
+	if r.RefundedAt != nil {
+		s := r.RefundedAt.Format(time.RFC3339)
+		refundedAt = &s
+	}
+	return &RefundDetailResponse{
+		ID:            r.ID.String(),
+		Status:        string(r.Status),
+		Amount:        r.Amount,
+		FailureReason: r.FailureReason,
+		RefundedAt:    refundedAt,
+		UpdatedAt:     r.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
