@@ -331,4 +331,18 @@ var _ = Describe("订单余额支付", func() {
 		Expect(current.Status).To(Equal(model.OrderStatusProcessing))
 		Expect(current.PaidAt).To(BeNil())
 	})
+	It("商家钱包缺失时返回 A05106 且整笔支付回滚", func() {
+		o := createOrder(1)
+		Expect(testDB.Where("user_id = ?", seller.ID).Delete(&model.UserWallet{}).Error).To(Succeed())
+
+		resp := pay(buyerToken, o.ID)
+		Expect(resp.Code).To(Equal(errno.ErrOrderPaymentSellerWallet.FullCode()))
+		Expect(balanceOf(buyer.ID)).To(Equal(float64(500)))
+
+		var current model.Order
+		Expect(testDB.First(&current, "id = ?", o.ID).Error).To(Succeed())
+		Expect(current.Status).To(Equal(model.OrderStatusProcessing))
+		Expect(current.PaidAt).To(BeNil())
+		Expect(paymentLogs()).To(HaveLen(0))
+	})
 })

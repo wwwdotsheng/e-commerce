@@ -23,6 +23,8 @@ var (
 	ErrWalletLogAlreadyExists = errors.New("wallet log already exists")
 	// ErrInsufficientBalance 买家钱包余额不足以完成本次扣款。
 	ErrInsufficientBalance = errors.New("wallet balance is insufficient")
+	// ErrSellerWalletMissing 商家账号缺少钱包记录，属于需要人工处理的数据异常。
+	ErrSellerWalletMissing = errors.New("seller wallet missing")
 )
 
 var constraintMap = map[string]error{
@@ -139,7 +141,7 @@ func (repo *Repository) CreditOrderIncome(ctx context.Context, sellerID uuid.UUI
 	}
 	if result.RowsAffected != 1 {
 		// 商家账号应随注册创建钱包；缺失说明数据异常，整笔支付回滚。
-		return fmt.Errorf("seller wallet %s not found", sellerID)
+		return fmt.Errorf("%w: seller %s", ErrSellerWalletMissing, sellerID)
 	}
 	return nil
 }
