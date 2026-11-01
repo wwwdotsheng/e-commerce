@@ -137,14 +137,25 @@ var _ = Describe("CouponApi", Ordered, func() {
 			Entry("缺 start_time", map[string]interface{}{"start_time": nil}),
 		)
 
-		DescribeTable("时间处理失败应返回 B01001",
+		It("接受带时区的 RFC3339 时间", func() {
+			_, resp := doCoupon(http.MethodPost, "/api/v1/coupon/template", validTemplate(map[string]interface{}{
+				"start_time": time.Now().Add(-time.Hour).Format(time.RFC3339),
+				"end_time":   time.Now().AddDate(1, 0, 0).Format(time.RFC3339),
+			}), true)
+			Expect(resp.Code).To(Equal(errno.OK.FullCode()))
+		})
+
+		DescribeTable("时间非法或顺序错误应返回 A00001",
 			func(overrides map[string]interface{}) {
 				w, resp := doCoupon(http.MethodPost, "/api/v1/coupon/template", validTemplate(overrides), true)
 				Expect(w.Code).To(Equal(http.StatusOK))
-				Expect(resp.Code).To(Equal(errno.ErrInternalServer.FullCode()))
+				Expect(resp.Code).To(Equal(errno.ErrInvalidParam.FullCode()))
 			},
-			Entry("start_time 用了 RFC3339", map[string]interface{}{
-				"start_time": "2026-01-01T00:00:00Z",
+			Entry("start_time 非法日期", map[string]interface{}{
+				"start_time": "2026-13-01 00:00:00",
+			}),
+			Entry("start_time 非法时区偏移", map[string]interface{}{
+				"start_time": "2026-06-01T00:00:00+25:00",
 			}),
 			Entry("end_time 早于 start_time", map[string]interface{}{
 				"start_time": "2027-01-01 00:00:00",

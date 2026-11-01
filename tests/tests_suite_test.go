@@ -244,7 +244,11 @@ var _ = BeforeSuite(func() {
 		logger.Fatal("初始化order mq失败", zap.Error(err))
 	}
 	couponRepo := coupon.NewRepository(testDB)
-	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics))
+	businessLocation, err := config.BusinessLocation()
+	if err != nil {
+		logger.Fatal("业务时区无效", zap.Error(err))
+	}
+	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics, businessLocation))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
 	testOrderService = orderSvc
 	testOrderMQConfig = config.OrderMQ

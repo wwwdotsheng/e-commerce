@@ -18,6 +18,7 @@ import (
 	"e-commerce/pkg/redis"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel"
@@ -61,6 +62,17 @@ func Bootstrap() (context.Context, func(), *config.AppConfig, error) {
 		MaxAge:       conf.Log.MaxAge,
 	})
 	ctx = clog.WithLogger(ctx, logger)
+
+	// 进程时区只影响“无时区输入”的解析，和数据库会话时区是两个独立开关。
+	// 不一致时不静默偏移，先告警；部署时区由镜像 TZ / K8s env 显式指定。
+	if location, err := conf.BusinessLocation(); err != nil {
+		logger.Warn("业务时区配置无效", zap.String("business_time_zone", conf.App.BusinessTimeZone), zap.Error(err))
+	} else if location.String() != time.Local.String() {
+		logger.Warn("进程时区与业务时区不一致",
+			zap.String("process_time_zone", time.Local.String()),
+			zap.String("business_time_zone", location.String()),
+		)
+	}
 
 	stop := func() {
 		if err = otelShutdown(context.Background()); err != nil {
@@ -265,7 +277,11 @@ func Run(ctx context.Context, config config.AppConfig) error {
 		return fmt.Errorf("初始化 order MQ 失败: %w", err)
 	}
 	couponRepo := coupon.NewRepository(db)
-	couponSvc := coupon.NewService(db, couponRepo, couponMetrics)
+	businessLocation, err := config.BusinessLocation()
+	if err != nil {
+		return fmt.Errorf("业务时区无效: %w", err)
+	}
+	couponSvc := coupon.NewService(db, couponRepo, couponMetrics, businessLocation)
 	couponH := coupon.NewHandler(couponSvc)
 
 	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
