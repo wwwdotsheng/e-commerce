@@ -25,12 +25,11 @@ type Service struct {
 	productRepo *product.Repository
 	couponRepo  *coupon.Repository
 	walletRepo  *wallet.Repository
-	channel     refundChannel
 	metrics     *Metrics
 }
 
 func NewService(db *gorm.DB, repo *Repository, productRepo *product.Repository, couponRepo *coupon.Repository, walletRepo *wallet.Repository, metrics *Metrics) *Service {
-	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo, walletRepo: walletRepo, channel: newMockRefundChannel(), metrics: metrics}
+	return &Service{db: db, repo: repo, productRepo: productRepo, couponRepo: couponRepo, walletRepo: walletRepo, metrics: metrics}
 }
 
 // CreateOrder 创建订单（支持可选优惠券）

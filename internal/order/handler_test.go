@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -39,8 +38,6 @@ type handlerOrderServiceStub struct {
 	payErr       error
 	payCalled    bool
 	gotSessionID string
-
-	refund *model.Refund
 }
 
 func (s *handlerOrderServiceStub) CreateOrder(context.Context, uuid.UUID, CreateOrderParam) error {
@@ -66,20 +63,6 @@ func (s *handlerOrderServiceStub) PayOrder(_ context.Context, userID uuid.UUID, 
 	return s.order, s.payErr
 }
 
-func (s *handlerOrderServiceStub) ApplyRefund(context.Context, uuid.UUID, uuid.UUID, string) (*model.Refund, error) {
-	if s.refund == nil {
-		return &model.Refund{ID: uuid.New(), Status: model.RefundStatusProcessing, Amount: decimal.Zero, UpdatedAt: time.Now()}, nil
-	}
-	return s.refund, nil
-}
-
-func (s *handlerOrderServiceStub) GetRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Refund, error) {
-	if s.refund == nil {
-		return nil, errno.ErrNotFoundRecord
-	}
-	return s.refund, nil
-}
-
 func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -97,8 +80,6 @@ func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	h := NewHandler(service)
 	r.GET("/orders/:id", h.GetOrderByID)
 	r.POST("/orders/:id/pay", h.PayOrder)
-	r.POST("/orders/:id/refund", h.ApplyRefund)
-	r.GET("/orders/:id/refund", h.GetRefund)
 	return r, service
 }
 
@@ -148,7 +129,7 @@ func TestGetOrderValidatesOrderID(t *testing.T) {
 	if err := json.Unmarshal(got.Data, &detail); err != nil {
 		t.Fatalf("decode detail response: %v", err)
 	}
-	if detail.ID != orderID.String() || detail.SnapshotTitle != "Test product" || !detail.TotalAmount.Equal(decimal.NewFromInt(25)) || detail.Refund != nil {
+	if detail.ID != orderID.String() || detail.SnapshotTitle != "Test product" || !detail.TotalAmount.Equal(decimal.NewFromInt(25)) {
 		t.Fatalf("unexpected detail response: %+v", detail)
 	}
 
@@ -226,32 +207,5 @@ func TestPayOrderValidatesOrderIDAndReturnsServiceError(t *testing.T) {
 	got := performHandlerRequest(t, r, http.MethodPost, "/orders/"+uuid.NewString()+"/pay", "")
 	if got.Code != errno.ErrWalletBalanceInsufficient.FullCode() {
 		t.Fatalf("response code = %q, want %q", got.Code, errno.ErrWalletBalanceInsufficient.FullCode())
-	}
-}
-
-func TestApplyRefundValidatesOrderIDAndIdempotencyKey(t *testing.T) {
-	r, _ := newHandlerTestRouter()
-	validID := uuid.NewString()
-
-	tests := []struct {
-		name string
-		id   string
-		body string
-		want string
-	}{
-		{name: "valid input reaches service", id: validID, body: `{"idempotency_key":"refund-key-1"}`, want: errno.OK.FullCode()},
-		{name: "invalid UUID is rejected", id: "not-a-uuid", body: `{"idempotency_key":"refund-key-1"}`, want: errno.ErrInvalidParam.FullCode()},
-		{name: "missing idempotency key is rejected", id: validID, body: `{}`, want: errno.ErrInvalidParam.FullCode()},
-		{name: "malformed JSON is rejected", id: validID, body: `{`, want: errno.ErrInvalidParam.FullCode()},
-		{name: "idempotency key over 64 characters is rejected", id: validID, body: `{"idempotency_key":"` + strings.Repeat("x", 65) + `"}`, want: errno.ErrInvalidParam.FullCode()},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := performHandlerRequest(t, r, http.MethodPost, "/orders/"+tt.id+"/refund", tt.body)
-			if got.Code != tt.want {
-				t.Fatalf("response code = %q, want %q", got.Code, tt.want)
-			}
-		})
 	}
 }
