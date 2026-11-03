@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
@@ -218,6 +219,104 @@ var _ = Describe("订单退款（异步受理）", func() {
 			Where("refund_id IN (SELECT id FROM refunds WHERE order_id = ?)", o.ID).Count(&jobCount).Error).To(Succeed())
 		Expect(refundCount).To(Equal(int64(1)))
 		Expect(jobCount).To(Equal(int64(1)))
+	})
+	It("worker 处理成功：退款成功、订单已退款、任务删除", func() {
+		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).
+			Update("price", decimal.NewFromInt(99)).Error).To(Succeed())
+		o := createPaidOrder(1)
+		r := decode(apply(o.ID, buyerToken))
+		Expect(r.Status).To(Equal(string(model.RefundStatusPending)))
+
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.Refund
+		Expect(testDB.First(&stored, "id = ?", r.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.RefundStatusSucceeded))
+		Expect(stored.RefundedAt).NotTo(BeNil())
+
+		var order model.Order
+		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
+		Expect(order.Status).To(Equal(model.OrderStatusRefunded))
+
+		var jobs int64
+		Expect(testDB.Model(&model.RefundJob{}).Where("refund_id = ?", r.ID).Count(&jobs).Error).To(Succeed())
+		Expect(jobs).To(Equal(int64(0)))
+	})
+
+	It("worker 遇到明确失败：进入等待重试并保留任务", func() {
+		o := createPaidOrder(1)
+		r := decode(apply(o.ID, buyerToken))
+
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.Refund
+		Expect(testDB.First(&stored, "id = ?", r.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.RefundStatusWaitRetry))
+
+		var order model.Order
+		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
+		Expect(order.Status).To(Equal(model.OrderStatusPaid))
+
+		var job model.RefundJob
+		Expect(testDB.First(&job, "refund_id = ?", r.ID).Error).To(Succeed())
+		Expect(job.JobType).To(Equal(model.RefundJobTypeCreate))
+		Expect(job.CreateAttempts).To(Equal(1))
+	})
+
+	It("worker 重试耗尽后标记失败并删除任务", func() {
+		o := createPaidOrder(1)
+		r := decode(apply(o.ID, buyerToken))
+
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(testDB.Model(&model.RefundJob{}).Where("refund_id = ?", r.ID).
+			Updates(map[string]any{"create_attempts": 5, "next_run_at": time.Now().Add(-time.Second)}).Error).To(Succeed())
+		_, err = testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.Refund
+		Expect(testDB.First(&stored, "id = ?", r.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.RefundStatusFailed))
+
+		var order model.Order
+		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
+		Expect(order.Status).To(Equal(model.OrderStatusPaid))
+
+		var jobs int64
+		Expect(testDB.Model(&model.RefundJob{}).Where("refund_id = ?", r.ID).Count(&jobs).Error).To(Succeed())
+		Expect(jobs).To(Equal(int64(0)))
+	})
+
+	It("worker 结果不明后查询确认成功", func() {
+		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).
+			Update("price", decimal.NewFromInt(98)).Error).To(Succeed())
+		o := createPaidOrder(1)
+		r := decode(apply(o.ID, buyerToken))
+
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var afterCreate model.Refund
+		Expect(testDB.First(&afterCreate, "id = ?", r.ID).Error).To(Succeed())
+		Expect(afterCreate.Status).To(Equal(model.RefundStatusWaitRetry))
+		var job model.RefundJob
+		Expect(testDB.First(&job, "refund_id = ?", r.ID).Error).To(Succeed())
+		Expect(job.JobType).To(Equal(model.RefundJobTypeQuery))
+
+		Expect(testDB.Model(&model.RefundJob{}).Where("id = ?", job.ID).
+			Update("next_run_at", time.Now().Add(-time.Second)).Error).To(Succeed())
+		_, err = testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.Refund
+		Expect(testDB.First(&stored, "id = ?", r.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.RefundStatusSucceeded))
+		var order model.Order
+		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
+		Expect(order.Status).To(Equal(model.OrderStatusRefunded))
 	})
 	It("退款金额取订单应付快照，商品改价不影响", func() {
 		o := createPaidOrder(2) // 100 * 2 = 200

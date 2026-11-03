@@ -285,6 +285,7 @@ func Run(ctx context.Context, config config.AppConfig) error {
 	couponH := coupon.NewHandler(couponSvc)
 
 	orderSvc := order.NewService(db, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
+	go orderSvc.RunRefundWorker(ctx)
 
 	orderMqHandler := order.NewMqHandler(orderSvc)
 	if err := orderMqHandler.ListenTimeout(ctx, mqCh, config.OrderMQ.ConsumerQueue); err != nil {

@@ -459,7 +459,7 @@ paths:
         受理接口只做校验并把退款记录和待执行任务写入数据库，立即返回 pending/处理中；
         不在 HTTP 请求内调用第三方，也不会自动完成退款。
         一个订单最多一条退款记录；重复/并发申请返回同一条记录，不重复创建任务。
-        后台执行器尚未接入，当前状态会停留在 pending，等待任务执行器处理。
+        后台 worker 每 5 秒异步处理：create_refund 调渠道，结果不明转 query_refund 继续确认。
       operationId: ApplyOrderRefund
       security:
         - AccessTokenAuth: []

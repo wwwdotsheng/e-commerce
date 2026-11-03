@@ -1,6 +1,6 @@
 # 订单退款（异步受理，一期）
 
-一期只做“受理 + 可查询”的退款流程：
+一期实现“受理 + 后台处理 + 可查询”的退款流程：
 
 - 用户申请通过校验后立即受理，无需商家审批；
 - 仅支持全额退款，金额取订单 `payable_amount` 快照；
@@ -61,15 +61,12 @@ pending ──worker领取──> processing ──成功──> succeeded（终
 - `A02100` 非买家
 - `A05105` 订单当前状态不可退款
 
-## 后台执行器（尚未实现）
+## 后台执行器
 
-未来 worker 的边界：
-
-1. 扫描 `refund_jobs` 中 `next_run_at <= now` 的任务；
-2. 调用前短事务记录尝试次数和 `next_run_at`，外部调用在事务外；
-3. 结果落库时锁 `refunds` 行，并在同一事务更新订单状态、删除任务；
-4. `create_refund` 结果不明 → 切 `query_refund`；查询“查无此退款” → 切回 `create_refund`；
-5. 次数上限用尽且结果明确 → `failed`；一直不明 → 人工核对，不伪造 failed；
-6. 崩溃恢复：`create_refund` 且退款为 `processing` 时，先查询渠道，不直接重新发起。
-
-参数（重试次数、退避间隔、扫描周期）尚未最终确定，实现 worker 时再定。
+- 每 5 秒扫描 `refund_jobs.next_run_at <= now()`，单批 20 条；
+- 调用前短事务记录尝试次数并设置 `next_run_at = now + 30s`；
+- 外部调用在事务外；结果落库时锁 `refunds` 行，同一事务更新订单状态、任务；
+- `create_refund` 结果不明 → 切 `query_refund`；查询“查无此退款” → 切回 `create_refund`；
+- create 最多 5 次、query 最多 10 次；失败按 5s、10s… 退避，最大 1 分钟；
+- query 次数耗尽仍不明 → 保留 `wait_retry`，任务 24 小时后再查（人工处理待后续）；
+- 崩溃恢复：`create_refund` 且退款为 `processing` 时，先查询渠道，不直接重新发起。
