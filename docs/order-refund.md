@@ -1,68 +1,75 @@
-# 订单退款（一期）
+# 订单退款（异步受理，一期）
 
-一期只做**全额退款 + 模拟渠道**，重点是重复申请、失败重试、渠道结果不明时的状态恢复，不接真实支付渠道。
+一期只做“受理 + 可查询”的退款流程：
 
-## 范围
+- 用户申请通过校验后立即受理，无需商家审批；
+- 仅支持全额退款，金额取订单 `payable_amount` 快照；
+- **HTTP 请求内不调用第三方、不重试、不启动 goroutine**；
+- 实际渠道调用由未来的后台任务执行器完成，本阶段尚未接入；
+- 因此申请成功后状态为 `pending`，不会自动变成 `succeeded`；这是预期行为。
 
-- 仅买家可以申请自己已支付订单的全额退款。
-- 退款金额 = 订单下单时保存的 `payable_amount`，不接受客户端传入金额。
-- 一个订单最多一条退款记录（`refunds.order_id` 唯一索引）。
-- 不处理部分退款、多次退款、银行卡/真实支付渠道、后台人工审核。
-- 一期**不反冲钱包余额**：资金语义由模拟渠道承担，避免卖家余额不足/对账问题；后续如需反冲，单独设计流水与负余额策略。
+本期不做：站内钱包反向转账、库存/优惠券返还、部分退款、真实支付渠道。
 
-## 状态机
+## 两张表
 
-退款记录状态：
+### refunds
+
+退款业务身份与当前/最终状态，一个订单最多一条记录（`order_id` 唯一）。
+
+- `id`：稳定 `refund_id`，后续调用/查询第三方都用它，重试不重新生成；
+- `order_id`、`buyer_id`、`amount`、`status`、`failure_reason`、`refunded_at`；
+- 成功后 `refunded_at` 写入；失败/未完成保持 null。
+
+### refund_jobs
+
+待执行任务，进程重启后仍然存在。同一退款最多一条活动任务（`refund_id` 唯一）。
+
+- `job_type`：
+  - `create_refund`：发起退款（首次受理，或查询确认上次未处理后再发起）；
+  - `query_refund`：结果不明时按同一 `refund_id` 查询确认；
+- `next_run_at`：任务到期时间，worker 按它取任务；
+- `create_attempts` / `query_attempts`：分别统计发起/查询次数，查询不消耗退款重试额度；
+- `last_error`：最近一次执行失败摘要，供排查；完整信息仍写日志；
+- 成功/失败终态落库后删除任务，`refunds` 永远保留。
+
+## 状态
 
 ```
-processing ──成功──> succeeded
-     ├────明确失败──> failed（新幂等键可重试，最多 3 次）
-     └────超时/异常/结果不明──> confirming（查询时确认）
+pending ──worker领取──> processing ──成功──> succeeded（终态）
+                             │
+                             ├──可重试失败──> wait_retry ──> pending/processing
+                             ├──不可重试/次数耗尽──> failed（终态）
+                             └──结果不明──> query_refund ──> succeeded / failed / create_refund
 ```
 
-订单状态：
-
-- 只有**退款成功**才把订单从 `4 已支付` 改为 `5 已退款`，与退款记录置为 `succeeded` 在同一事务。
-- 退款失败/结果不明时订单保持 `4 已支付`。
-- `5 已退款` 为终态：不能再次支付，重复申请返回已有记录。
+- `pending` / `processing` / `wait_retry`：未终态，前端显示“处理中/等待重试”；
+- `succeeded` / `failed`：终态；
+- 只有 `succeeded` 才把订单从 `4 已支付` 改为 `5 已退款`；
+- 订单在 `pending/processing/wait_retry/failed` 时保持 `4 已支付`。
 
 ## 接口
 
-| 接口 | 说明 |
+| 接口 | 行为 |
 |---|---|
-| `POST /api/v1/order/{id}/refund` | 申请全额退款，body `{"idempotency_key":"..."}` |
-| `GET /api/v1/order/{id}/refund` | 查询退款状态；`confirming` 会顺带向渠道确认一次 |
-| `GET /api/v1/order/{id}` | 订单详情，`refund` 字段有记录时返回退款详情 |
+| `POST /api/v1/order/{id}/refund` | 校验买家/归属/已支付，事务内写 refunds + refund_jobs，立即返回 `pending`；重复/并发申请返回同一条记录 |
+| `GET /api/v1/order/{id}` | 订单详情；`refund` 只读返回当前退款状态，`timeline` 返回订单+退款的状态时间线，无退款时 refund 为 null |
 
 错误码：
 
-- `A00001` 参数非法（幂等键缺失/超长/字符非法）
-- `A00002` 订单或退款记录不存在（含不属于当前用户）
-- `A02100` 非买家调用
-- `A05105` 订单当前状态不可退款（未支付/已关闭）
+- `A00001` 参数非法
+- `A00002` 订单/退款不存在或不属于当前用户
+- `A02100` 非买家
+- `A05105` 订单当前状态不可退款
 
-## 模拟渠道规则
+## 后台执行器（尚未实现）
 
-`mockRefundChannel` 按退款金额（分）`% 3` 决定结果，便于测试复现：
+未来 worker 的边界：
 
-| 金额（分）%3 | Create 结果 | Query 结果 |
-|---|---|---|
-| 0 | succeeded | — |
-| 1 | failed（`mock channel declined`） | — |
-| 2 | confirming | succeeded |
+1. 扫描 `refund_jobs` 中 `next_run_at <= now` 的任务；
+2. 调用前短事务记录尝试次数和 `next_run_at`，外部调用在事务外；
+3. 结果落库时锁 `refunds` 行，并在同一事务更新订单状态、删除任务；
+4. `create_refund` 结果不明 → 切 `query_refund`；查询“查无此退款” → 切回 `create_refund`；
+5. 次数上限用尽且结果明确 → `failed`；一直不明 → 人工核对，不伪造 failed；
+6. 崩溃恢复：`create_refund` 且退款为 `processing` 时，先查询渠道，不直接重新发起。
 
-真实渠道接入时只需替换 `internal/order/refund_channel.go` 的实现。
-
-## 幂等与并发
-
-- 重复申请：先查已有记录，不重复创建；并发由 `uni_refunds_order_id` 兜底。
-- `failed` 重试：同一 `idempotency_key` 只返回当前记录，不调用渠道；新 key 才重试并 `attempts+1`。
-- 渠道调用在数据库事务外执行；结果落库时对退款记录加行锁，已是终态则忽略。
-- 渠道异常默认记为 `confirming`，避免误判成功/失败。
-- 成功落库时对订单条件更新 `WHERE status = 4`，保证与退款记录一致。
-
-## 时间字段
-
-- `refunds.refunded_at`：只在退款成功时写一次，代表退款完成时间；失败/确认中为 `NULL`。
-- `refunds.updated_at`：最新状态时间（重试/确认都会刷新）。
-- `orders` 不新增退款字段，避免交易表继续变宽；退款数据统一放 `refunds`。
+参数（重试次数、退避间隔、扫描周期）尚未最终确定，实现 worker 时再定。

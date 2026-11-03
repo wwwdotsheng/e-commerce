@@ -456,9 +456,10 @@ paths:
       summary: 申请订单全额退款（模拟渠道）
       description: |
         仅买家可调用（非买家返回 A02100）。
-        仅已支付订单可以申请；一个订单最多一条退款记录。
-        重复申请返回已有记录；failed 状态下使用新的 idempotency_key 可重新提交重试；
-        confirming 表示渠道结果不明，通过 GET 查询确认，不重复创建。
+        受理接口只做校验并把退款记录和待执行任务写入数据库，立即返回 pending/处理中；
+        不在 HTTP 请求内调用第三方，也不会自动完成退款。
+        一个订单最多一条退款记录；重复/并发申请返回同一条记录，不重复创建任务。
+        后台执行器尚未接入，当前状态会停留在 pending，等待任务执行器处理。
       operationId: ApplyOrderRefund
       security:
         - AccessTokenAuth: []
@@ -469,41 +470,13 @@ paths:
           schema:
             type: string
             format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ApplyRefundRequest'
       responses:
         '200':
-          description: 统一 API 响应；data 为当前退款记录；非买家返回 A02100
+          description: 统一 API 响应；data 为退款记录（pending/处理中）；非买家返回 A02100
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/RefundResponse'
-    get:
-      tags: [订单]
-      summary: 查询订单退款状态
-      description: 仅买家可查询自己的订单退款；confirming 状态会顺带向渠道确认一次结果；非买家返回 A02100。
-      operationId: GetOrderRefund
-      security:
-        - AccessTokenAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: 统一 API 响应；无退款记录时返回 A00002，非买家返回 A02100
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RefundResponse'
-
   /coupon/template:
     post:
       tags: [优惠券]
@@ -1010,6 +983,11 @@ components:
                   properties:
                     refund:
                       $ref: '#/components/schemas/RefundDetail'
+                    timeline:
+                      type: array
+                      description: 订单状态时间线，由订单和退款记录拼出
+                      items:
+                        $ref: '#/components/schemas/TimelineEvent'
                     coupon_id:
                       type: string
                       format: uuid
@@ -1017,6 +995,20 @@ components:
                     updated_at:
                       type: string
                       format: date-time
+
+    TimelineEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [order_created, payment_succeeded, payment_timeout, order_closed, refund_requested, refund_processing, refund_succeeded, refund_failed]
+        at:
+          type: string
+          format: date-time
+        refund_id:
+          type: string
+          format: uuid
+          description: 退款相关事件返回，其他事件省略
 
     RefundDetail:
       type: object
@@ -1027,8 +1019,8 @@ components:
           format: uuid
         status:
           type: string
-          enum: [processing, succeeded, failed, confirming]
-          description: processing=处理中 succeeded=成功 failed=明确失败 confirming=结果不明待确认
+          enum: [pending, processing, wait_retry, succeeded, failed]
+          description: pending=待处理 processing=处理中 wait_retry=等待重试 succeeded=成功 failed=最终失败
         amount:
           type: number
           format: double
@@ -1053,14 +1045,6 @@ components:
             data:
               $ref: '#/components/schemas/RefundDetail'
 
-    ApplyRefundRequest:
-      type: object
-      required: [idempotency_key]
-      properties:
-        idempotency_key:
-          type: string
-          maxLength: 64
-          description: 退款申请幂等键
 
     # === 优惠券 ===
 
