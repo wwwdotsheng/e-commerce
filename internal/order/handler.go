@@ -20,6 +20,8 @@ type orderService interface {
 	ListOrders(context.Context, ListOrdersParam) ([]*model.Order, int64, error)
 	GetOrderByID(context.Context, uuid.UUID, uuid.UUID) (*model.Order, error)
 	PayOrder(context.Context, uuid.UUID, string, uuid.UUID) (*model.Order, error)
+	ApplyRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Refund, error)
+	GetOrderWithRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Order, *model.Refund, error)
 }
 
 func NewHandler(svc orderService) *Handler {
@@ -96,9 +98,9 @@ func (h *Handler) ListOrders(c *gin.Context) {
 		return
 	}
 
-	items := make([]OrderItem, 0, len(orders))
+	items := make([]Item, 0, len(orders))
 	for _, o := range orders {
-		items = append(items, *FormatOrderItem(o))
+		items = append(items, *FormatItem(o))
 	}
 
 	response.Write(c, nil, ListOrdersResponse{
@@ -127,12 +129,17 @@ func (h *Handler) GetOrderByID(c *gin.Context) {
 		return
 	}
 
-	o, err := h.svc.GetOrderByID(ctx, accountInfo.AccountId, orderID)
+	o, refund, err := h.svc.GetOrderWithRefund(ctx, accountInfo.AccountId, orderID)
 	if err != nil {
 		response.Write(c, err, nil)
 		return
 	}
-	response.Write(c, nil, FormatOrderDetail(o))
+	detail := FormatOrderDetail(o)
+	if refund != nil {
+		detail.Refund = FormatRefund(refund)
+	}
+	detail.Timeline = BuildTimeline(o, refund)
+	response.Write(c, nil, detail)
 }
 
 // PayOrder 使用账户余额支付订单
@@ -161,4 +168,30 @@ func (h *Handler) PayOrder(c *gin.Context) {
 		return
 	}
 	response.Write(c, nil, FormatOrderDetail(o))
+}
+
+// ApplyRefund 受理全额退款：只落 refunds + refund_jobs，立即返回 pending。
+func (h *Handler) ApplyRefund(c *gin.Context) {
+	ctx := c.Request.Context()
+	accountInfo := identity.GetAccountInfo(ctx)
+	if accountInfo == nil {
+		response.Write(c, errno.ErrGetAccountInfo, nil)
+		return
+	}
+	var uri UriWithOrderID
+	if err := c.ShouldBindUri(&uri); err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	orderID, err := uuid.Parse(uri.ID)
+	if err != nil {
+		response.WriteInvalidParam(c, err)
+		return
+	}
+	refund, err := h.svc.ApplyRefund(ctx, accountInfo.AccountId, orderID)
+	if err != nil {
+		response.Write(c, err, nil)
+		return
+	}
+	response.Write(c, nil, FormatRefund(refund))
 }

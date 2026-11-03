@@ -40,7 +40,7 @@ func TestOrderPaymentResponse(t *testing.T) {
 			PayableAmount:   decimal.RequireFromString("109.98"),
 			PaymentDeadline: deadline,
 		}
-		got := FormatOrderItem(o)
+		got := FormatItem(o)
 		want := decimal.RequireFromString("109.98")
 		if !got.PayableAmount.Equal(want) || !got.TotalAmount.Equal(want) || !got.PaymentDeadline.Equal(deadline) {
 			t.Fatalf("订单金额快照不一致: %+v", got)
@@ -60,7 +60,7 @@ func TestOrderPaymentResponse(t *testing.T) {
 	t.Run("已支付和已关闭时间原样返回", func(t *testing.T) {
 		now := time.Now()
 		reason := model.OrderCloseReasonPaymentTimeout
-		got := FormatOrderItem(&model.Order{PaidAt: &now, ClosedAt: &now, CloseReason: &reason})
+		got := FormatItem(&model.Order{PaidAt: &now, ClosedAt: &now, CloseReason: &reason})
 		if got.CloseReason == nil || *got.CloseReason != model.OrderCloseReasonPaymentTimeout {
 			t.Fatal("关闭原因缺失")
 		}

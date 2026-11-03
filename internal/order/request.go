@@ -15,7 +15,3 @@ type ListOrdersQuery struct {
 type UriWithOrderID struct {
 	ID string `uri:"id" binding:"required"`
 }
-
-type ApplyRefundBody struct {
-	IdempotencyKey string `json:"idempotency_key" binding:"required,max=64"`
-}

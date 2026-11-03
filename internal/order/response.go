@@ -7,7 +7,7 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-type OrderItem struct {
+type Item struct {
 	CloseReason     *model.OrderCloseReason `json:"close_reason"`
 	PayableAmount   decimal.Decimal         `json:"payable_amount"`
 	PaymentDeadline time.Time               `json:"payment_deadline"`
@@ -28,18 +28,35 @@ type OrderItem struct {
 }
 
 type ListOrdersResponse struct {
-	Orders []OrderItem `json:"orders"`
-	Total  int64       `json:"total"`
+	Orders []Item `json:"orders"`
+	Total  int64  `json:"total"`
 }
 
-type OrderDetailResponse struct {
-	OrderItem
-	CouponID  *string `json:"coupon_id,omitempty"`
-	UpdatedAt string  `json:"updated_at"`
+type RefundDetailResponse struct {
+	ID            string          `json:"id"`
+	Status        string          `json:"status"`
+	Amount        decimal.Decimal `json:"amount"`
+	FailureReason string          `json:"failure_reason,omitempty"`
+	RefundedAt    *string         `json:"refunded_at,omitempty"`
+	UpdatedAt     string          `json:"updated_at"`
 }
 
-func FormatOrderItem(o *model.Order) *OrderItem {
-	return &OrderItem{
+type DetailResponse struct {
+	Item
+	CouponID  *string               `json:"coupon_id,omitempty"`
+	UpdatedAt string                `json:"updated_at"`
+	Refund    *RefundDetailResponse `json:"refund"`
+	Timeline  []TimelineEvent       `json:"timeline"`
+}
+
+type TimelineEvent struct {
+	Type     string `json:"type"`
+	At       string `json:"at"`
+	RefundID string `json:"refund_id,omitempty"`
+}
+
+func FormatItem(o *model.Order) *Item {
+	return &Item{
 		CloseReason:   o.CloseReason,
 		PayableAmount: o.PayableAmount, PaymentDeadline: o.PaymentDeadline, PaidAt: o.PaidAt, ClosedAt: o.ClosedAt,
 		SellerID: o.SellerID.String(), BuyerID: o.UserID.String(),
@@ -55,15 +72,66 @@ func FormatOrderItem(o *model.Order) *OrderItem {
 	}
 }
 
-func FormatOrderDetail(o *model.Order) *OrderDetailResponse {
+func FormatRefund(r *model.Refund) *RefundDetailResponse {
+	var refundedAt *string
+	if r.RefundedAt != nil {
+		s := r.RefundedAt.Format(time.RFC3339)
+		refundedAt = &s
+	}
+	return &RefundDetailResponse{
+		ID:            r.ID.String(),
+		Status:        string(r.Status),
+		Amount:        r.Amount,
+		FailureReason: r.FailureReason,
+		RefundedAt:    refundedAt,
+		UpdatedAt:     r.UpdatedAt.Format(time.RFC3339),
+	}
+}
+
+func FormatOrderDetail(o *model.Order) *DetailResponse {
 	var couponID *string
 	if o.UserCouponID != nil {
 		id := o.UserCouponID.String()
 		couponID = &id
 	}
-	return &OrderDetailResponse{
-		OrderItem: *FormatOrderItem(o),
+	return &DetailResponse{
+		Item:      *FormatItem(o),
 		CouponID:  couponID,
 		UpdatedAt: o.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+// BuildTimeline 由订单和退款记录拼出状态时间线；退款时间只来自 refunds，不写回 orders。
+func BuildTimeline(o *model.Order, refund *model.Refund) []TimelineEvent {
+	events := []TimelineEvent{{Type: "order_created", At: o.CreatedAt.Format(time.RFC3339)}}
+	if o.PaidAt != nil {
+		events = append(events, TimelineEvent{Type: "payment_succeeded", At: o.PaidAt.Format(time.RFC3339)})
+	}
+	if o.ClosedAt != nil {
+		typ := "order_closed"
+		if o.CloseReason != nil && *o.CloseReason == model.OrderCloseReasonPaymentTimeout {
+			typ = "payment_timeout"
+		}
+		events = append(events, TimelineEvent{Type: typ, At: o.ClosedAt.Format(time.RFC3339)})
+	}
+	if refund != nil {
+		events = append(events, TimelineEvent{
+			Type: "refund_requested", At: refund.CreatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
+		})
+		switch {
+		case refund.RefundedAt != nil:
+			events = append(events, TimelineEvent{
+				Type: "refund_succeeded", At: refund.RefundedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
+			})
+		case refund.Status == model.RefundStatusFailed:
+			events = append(events, TimelineEvent{
+				Type: "refund_failed", At: refund.UpdatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
+			})
+		default:
+			events = append(events, TimelineEvent{
+				Type: "refund_processing", At: refund.UpdatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
+			})
+		}
+	}
+	return events
 }

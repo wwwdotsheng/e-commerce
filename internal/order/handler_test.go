@@ -38,6 +38,9 @@ type handlerOrderServiceStub struct {
 	payErr       error
 	payCalled    bool
 	gotSessionID string
+
+	refund    *model.Refund
+	refundErr error
 }
 
 func (s *handlerOrderServiceStub) CreateOrder(context.Context, uuid.UUID, CreateOrderParam) error {
@@ -63,6 +66,16 @@ func (s *handlerOrderServiceStub) PayOrder(_ context.Context, userID uuid.UUID, 
 	return s.order, s.payErr
 }
 
+func (s *handlerOrderServiceStub) ApplyRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Refund, error) {
+	return s.refund, s.refundErr
+}
+
+func (s *handlerOrderServiceStub) GetOrderWithRefund(_ context.Context, userID, orderID uuid.UUID) (*model.Order, *model.Refund, error) {
+	s.getCalled = true
+	s.gotUserID = userID
+	s.gotOrderID = orderID
+	return s.order, s.refund, s.getErr
+}
 func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -125,7 +138,7 @@ func TestGetOrderValidatesOrderID(t *testing.T) {
 	if !service.getCalled || service.gotUserID != service.accountID || service.gotOrderID != orderID {
 		t.Fatalf("GetOrderByID called with user %s and order %s; want user %s and order %s", service.gotUserID, service.gotOrderID, service.accountID, orderID)
 	}
-	var detail OrderDetailResponse
+	var detail DetailResponse
 	if err := json.Unmarshal(got.Data, &detail); err != nil {
 		t.Fatalf("decode detail response: %v", err)
 	}
@@ -183,7 +196,7 @@ func TestPayOrderPassesIdentityAndReturnsOrder(t *testing.T) {
 	if service.gotSessionID != "handler-test-session" {
 		t.Fatalf("PayOrder session = %q, want the authenticated session", service.gotSessionID)
 	}
-	var detail OrderDetailResponse
+	var detail DetailResponse
 	if err := json.Unmarshal(got.Data, &detail); err != nil {
 		t.Fatalf("decode pay response: %v", err)
 	}

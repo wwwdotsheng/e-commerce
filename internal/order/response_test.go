@@ -31,7 +31,7 @@ func TestFormatOrderTimesUseRFC3339(t *testing.T) {
 		UpdatedAt:     updatedAt,
 	}
 
-	item := FormatOrderItem(o)
+	item := FormatItem(o)
 	if _, err := time.Parse(time.RFC3339, item.CreatedAt); err != nil {
 		t.Fatalf("created_at=%q 不是 RFC3339: %v", item.CreatedAt, err)
 	}
