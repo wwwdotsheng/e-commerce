@@ -7,17 +7,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// RefundJobType 表示后台下一步要对第三方执行的动作。
 type RefundJobType string
 
 const (
-	// RefundJobTypeCreate 发起退款；查询确认上次没处理过时也会切回该类型。
 	RefundJobTypeCreate RefundJobType = "create_refund"
-	// RefundJobTypeQuery 结果不明，按同一 refund_id 查询确认。
-	RefundJobTypeQuery RefundJobType = "query_refund"
+	RefundJobTypeQuery  RefundJobType = "query_refund"
 )
 
-// RefundJob 退款后台任务：同一退款最多一条活动任务。
 type RefundJob struct {
 	ID             uuid.UUID     `gorm:"column:id;primaryKey;type:uuid"`
 	RefundID       uuid.UUID     `gorm:"column:refund_id;type:uuid;not null;uniqueIndex:uni_refund_jobs_refund_id"`

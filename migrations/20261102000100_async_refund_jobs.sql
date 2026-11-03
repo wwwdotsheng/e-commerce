@@ -1,5 +1,3 @@
--- 异步退款：refunds 作为业务身份/最终状态，refund_jobs 作为待执行任务。
--- 历史同步实现的列（idempotency_key/attempts）不再使用；不回改已应用的历史迁移。
 
 ALTER TABLE refunds DROP COLUMN IF EXISTS idempotency_key;
 ALTER TABLE refunds DROP COLUMN IF EXISTS attempts;

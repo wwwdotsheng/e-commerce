@@ -8,8 +8,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// RefundStatus 表示退款业务记录的当前状态。
-// pending/processing/wait_retry 都是未终态；succeeded/failed 是终态。
 type RefundStatus string
 
 const (
@@ -20,7 +18,6 @@ const (
 	RefundStatusFailed     RefundStatus = "failed"
 )
 
-// Refund 订单退款业务记录：一个订单最多一条，refund_id 是调用第三方渠道的稳定标识。
 type Refund struct {
 	ID            uuid.UUID       `gorm:"column:id;primaryKey;type:uuid"`
 	OrderID       uuid.UUID       `gorm:"column:order_id;type:uuid;not null;uniqueIndex:uni_refunds_order_id"`

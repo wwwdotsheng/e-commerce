@@ -101,7 +101,6 @@ func FormatOrderDetail(o *model.Order) *DetailResponse {
 	}
 }
 
-// BuildTimeline 由订单和退款记录拼出状态时间线；退款时间只来自 refunds，不写回 orders。
 func BuildTimeline(o *model.Order, refund *model.Refund) []TimelineEvent {
 	events := []TimelineEvent{{Type: "order_created", At: o.CreatedAt.Format(time.RFC3339)}}
 	if o.PaidAt != nil {

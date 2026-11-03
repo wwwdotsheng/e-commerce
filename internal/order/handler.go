@@ -18,10 +18,9 @@ type Handler struct {
 type orderService interface {
 	CreateOrder(context.Context, uuid.UUID, CreateOrderParam) error
 	ListOrders(context.Context, ListOrdersParam) ([]*model.Order, int64, error)
-	GetOrderByID(context.Context, uuid.UUID, uuid.UUID) (*model.Order, error)
 	PayOrder(context.Context, uuid.UUID, string, uuid.UUID) (*model.Order, error)
 	ApplyRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Refund, error)
-	GetOrderWithRefund(context.Context, uuid.UUID, uuid.UUID) (*model.Order, *model.Refund, error)
+	GetOrderDetail(context.Context, uuid.UUID, uuid.UUID) (*OrderDetail, error)
 }
 
 func NewHandler(svc orderService) *Handler {
@@ -129,17 +128,17 @@ func (h *Handler) GetOrderByID(c *gin.Context) {
 		return
 	}
 
-	o, refund, err := h.svc.GetOrderWithRefund(ctx, accountInfo.AccountId, orderID)
+	detail, err := h.svc.GetOrderDetail(ctx, accountInfo.AccountId, orderID)
 	if err != nil {
 		response.Write(c, err, nil)
 		return
 	}
-	detail := FormatOrderDetail(o)
-	if refund != nil {
-		detail.Refund = FormatRefund(refund)
+	resp := FormatOrderDetail(detail.Order)
+	if detail.Refund != nil {
+		resp.Refund = FormatRefund(detail.Refund)
 	}
-	detail.Timeline = BuildTimeline(o, refund)
-	response.Write(c, nil, detail)
+	resp.Timeline = BuildTimeline(detail.Order, detail.Refund)
+	response.Write(c, nil, resp)
 }
 
 // PayOrder 使用账户余额支付订单
@@ -170,7 +169,6 @@ func (h *Handler) PayOrder(c *gin.Context) {
 	response.Write(c, nil, FormatOrderDetail(o))
 }
 
-// ApplyRefund 受理全额退款：只落 refunds + refund_jobs，立即返回 pending。
 func (h *Handler) ApplyRefund(c *gin.Context) {
 	ctx := c.Request.Context()
 	accountInfo := identity.GetAccountInfo(ctx)

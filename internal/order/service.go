@@ -244,10 +244,6 @@ func (svc *Service) ListOrders(ctx context.Context, param ListOrdersParam) ([]*m
 	return svc.repo.ListOrdersByUserID(ctx, param.UserID, param.PageNum, param.PageSize)
 }
 
-func (svc *Service) GetOrderByID(ctx context.Context, userID, orderID uuid.UUID) (*model.Order, error) {
-	return svc.repo.GetOrderByID(ctx, userID, orderID)
-}
-
 // PayOrder 使用买家余额支付订单：扣买家余额、记入商家余额、订单转为已支付在同一事务内完成。
 // 重复支付返回当前订单且不再扣款；已关闭或超过截止时间的订单拒绝支付。
 func (svc *Service) PayOrder(ctx context.Context, userID uuid.UUID, sessionID string, orderID uuid.UUID) (paid *model.Order, err error) {

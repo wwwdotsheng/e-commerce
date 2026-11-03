@@ -70,11 +70,11 @@ func (s *handlerOrderServiceStub) ApplyRefund(context.Context, uuid.UUID, uuid.U
 	return s.refund, s.refundErr
 }
 
-func (s *handlerOrderServiceStub) GetOrderWithRefund(_ context.Context, userID, orderID uuid.UUID) (*model.Order, *model.Refund, error) {
+func (s *handlerOrderServiceStub) GetOrderDetail(_ context.Context, userID, orderID uuid.UUID) (*OrderDetail, error) {
 	s.getCalled = true
 	s.gotUserID = userID
 	s.gotOrderID = orderID
-	return s.order, s.refund, s.getErr
+	return &OrderDetail{Order: s.order, Refund: s.refund}, s.getErr
 }
 func newHandlerTestRouter() (*gin.Engine, *handlerOrderServiceStub) {
 	gin.SetMode(gin.TestMode)
