@@ -3,11 +3,14 @@ package order
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -68,4 +71,56 @@ func (repo *Repository) FindDueRefundJobs(ctx context.Context, limit int) ([]*mo
 		Limit(limit).
 		Find(&jobs).Error
 	return jobs, err
+}
+
+type orderRefundRow struct {
+	model.Order
+	RefundID            *uuid.UUID       `gorm:"column:refund_id"`
+	RefundBuyerID       *uuid.UUID       `gorm:"column:refund_buyer_id"`
+	RefundAmount        *decimal.Decimal `gorm:"column:refund_amount"`
+	RefundStatus        *string          `gorm:"column:refund_status"`
+	RefundFailureReason *string          `gorm:"column:refund_failure_reason"`
+	RefundRefundedAt    *time.Time       `gorm:"column:refund_refunded_at"`
+	RefundCreatedAt     *time.Time       `gorm:"column:refund_created_at"`
+	RefundUpdatedAt     *time.Time       `gorm:"column:refund_updated_at"`
+}
+
+func (repo *Repository) GetOrderDetail(ctx context.Context, userID, orderID uuid.UUID) (*model.Order, *model.Refund, error) {
+	const query = `
+SELECT o.*,
+       r.id AS refund_id,
+       r.buyer_id AS refund_buyer_id,
+       r.amount AS refund_amount,
+       r.status AS refund_status,
+       r.failure_reason AS refund_failure_reason,
+       r.refunded_at AS refund_refunded_at,
+       r.created_at AS refund_created_at,
+       r.updated_at AS refund_updated_at
+FROM orders o
+LEFT JOIN refunds r ON r.order_id = o.id
+WHERE o.id = ? AND o.user_id = ?
+LIMIT 1`
+	var row orderRefundRow
+	result := repo.GetDB(ctx).Raw(query, orderID, userID).Scan(&row)
+	if result.Error != nil {
+		return nil, nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, nil, gorm.ErrRecordNotFound
+	}
+	if row.RefundID == nil {
+		return &row.Order, nil, nil
+	}
+	refund := &model.Refund{
+		ID:            *row.RefundID,
+		OrderID:       row.Order.ID,
+		BuyerID:       *row.RefundBuyerID,
+		Amount:        *row.RefundAmount,
+		Status:        model.RefundStatus(*row.RefundStatus),
+		FailureReason: *row.RefundFailureReason,
+		RefundedAt:    row.RefundRefundedAt,
+		CreatedAt:     *row.RefundCreatedAt,
+		UpdatedAt:     *row.RefundUpdatedAt,
+	}
+	return &row.Order, refund, nil
 }

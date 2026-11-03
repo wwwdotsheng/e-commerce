@@ -73,17 +73,10 @@ type OrderDetail struct {
 }
 
 func (svc *Service) GetOrderDetail(ctx context.Context, userID, orderID uuid.UUID) (*OrderDetail, error) {
-	order, err := svc.repo.GetOrderByID(ctx, userID, orderID)
+	order, refund, err := svc.repo.GetOrderDetail(ctx, userID, orderID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errno.ErrNotFoundRecord
-		}
-		return nil, err
-	}
-	refund, err := svc.repo.GetRefundByOrderID(ctx, orderID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return &OrderDetail{Order: order}, nil
 		}
 		return nil, err
 	}
