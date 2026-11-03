@@ -723,7 +723,7 @@ components:
           type: string
           maxLength: 64
           pattern: '^[A-Za-z0-9._:-]+$'
-          description: 幂等键，防止重复充值；不允许占用 order: 系统命名空间
+          description: '幂等键，防止重复充值；不允许占用 order: 系统命名空间'
 
     CreateProductRequest:
       type: object

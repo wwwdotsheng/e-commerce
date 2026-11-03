@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"e-commerce/internal/model"
 	"e-commerce/pkg/errno"
@@ -192,6 +194,31 @@ var _ = Describe("订单退款（异步受理）", func() {
 		Expect(apply(paid.ID, sellerToken).Code).To(Equal(errno.ErrAuthNotPermission.FullCode()))
 	})
 
+	It("并发申请只产生一条退款和一条任务", func() {
+		o := createPaidOrder(1)
+		const n = 5
+		results := make(chan error, n)
+		var wg sync.WaitGroup
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := testOrderService.ApplyRefund(context.Background(), buyer.ID, o.ID)
+				results <- err
+			}()
+		}
+		wg.Wait()
+		close(results)
+		for err := range results {
+			Expect(err).NotTo(HaveOccurred())
+		}
+		var refundCount, jobCount int64
+		Expect(testDB.Model(&model.Refund{}).Where("order_id = ?", o.ID).Count(&refundCount).Error).To(Succeed())
+		Expect(testDB.Model(&model.RefundJob{}).
+			Where("refund_id IN (SELECT id FROM refunds WHERE order_id = ?)", o.ID).Count(&jobCount).Error).To(Succeed())
+		Expect(refundCount).To(Equal(int64(1)))
+		Expect(jobCount).To(Equal(int64(1)))
+	})
 	It("退款金额取订单应付快照，商品改价不影响", func() {
 		o := createPaidOrder(2) // 100 * 2 = 200
 		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).
