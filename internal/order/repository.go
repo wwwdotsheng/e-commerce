@@ -207,3 +207,10 @@ func (repo *Repository) ListOrdersByUserID(ctx context.Context, userID uuid.UUID
 
 	return orders, total, err
 }
+func (repo *Repository) GetOrderForUpdate(ctx context.Context, orderID uuid.UUID) (*model.Order, error) {
+	var o model.Order
+	if err := repo.GetDB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).First(&o, "id = ?", orderID).Error; err != nil {
+		return nil, err
+	}
+	return &o, nil
+}

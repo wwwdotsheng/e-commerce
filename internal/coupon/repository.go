@@ -144,7 +144,7 @@ func (r *Repository) ReturnCoupon(ctx context.Context, userCouponID uuid.UUID) e
 	result := r.GetDB(ctx).Model(&model.UserCoupon{}).
 		Where("id = ? AND status = ?", userCouponID, model.UserCouponStatusUsed).
 		Updates(map[string]interface{}{
-			"status":        model.UserCouponStatusUnused,
+			"status":        gorm.Expr("CASE WHEN expire_time <= now() THEN ? ELSE ? END", model.UserCouponStatusExpired, model.UserCouponStatusUnused),
 			"used_order_id": nil,
 			"used_at":       nil,
 			"version":       gorm.Expr("version + 1"),
@@ -164,7 +164,7 @@ func (r *Repository) ReturnCouponForOrder(ctx context.Context, couponID, orderID
 	result := r.GetDB(ctx).Model(&model.UserCoupon{}).
 		Where("id = ? AND status = ? AND used_order_id = ?", couponID, model.UserCouponStatusUsed, orderID).
 		Updates(map[string]interface{}{
-			"status":        model.UserCouponStatusUnused,
+			"status":        gorm.Expr("CASE WHEN expire_time <= now() THEN ? ELSE ? END", model.UserCouponStatusExpired, model.UserCouponStatusUnused),
 			"used_order_id": nil,
 			"used_at":       nil,
 			"version":       gorm.Expr("version + 1"),

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"e-commerce/internal/coupon"
 	"e-commerce/internal/model"
 	"e-commerce/internal/pkg/database"
 	"e-commerce/pkg/clog"
@@ -29,10 +30,11 @@ const (
 type refundWorker struct {
 	repo    *Repository
 	channel refundChannel
+	coupon  *coupon.Repository
 }
 
-func newRefundWorker(repo *Repository, channel refundChannel) *refundWorker {
-	return &refundWorker{repo: repo, channel: channel}
+func newRefundWorker(repo *Repository, channel refundChannel, couponRepo *coupon.Repository) *refundWorker {
+	return &refundWorker{repo: repo, channel: channel, coupon: couponRepo}
 }
 
 func (w *refundWorker) run(ctx context.Context) {
@@ -161,6 +163,15 @@ func (w *refundWorker) applyResult(ctx context.Context, job *model.RefundJob, re
 		switch result.Outcome {
 		case refundOutcomeSucceeded:
 			now := time.Now()
+			order, err := w.repo.GetOrderForUpdate(txCtx, refund.OrderID)
+			if err != nil {
+				return err
+			}
+			if order.UserCouponID != nil && w.coupon != nil {
+				if err := w.coupon.ReturnCouponForOrder(txCtx, *order.UserCouponID, order.ID); err != nil && !errors.Is(err, coupon.ErrCouponAlreadyUsed) {
+					return err
+				}
+			}
 			if err := w.repo.UpdateRefundStatus(txCtx, refund.ID, model.RefundStatusSucceeded, "", &now); err != nil {
 				return err
 			}

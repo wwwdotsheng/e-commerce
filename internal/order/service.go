@@ -336,9 +336,9 @@ func classifyPaymentError(err error) (OrderPaymentErrCode, error) {
 	}
 }
 func (svc *Service) RunRefundWorker(ctx context.Context) {
-	newRefundWorker(svc.repo, svc.refundCh).run(ctx)
+	newRefundWorker(svc.repo, svc.refundCh, svc.couponRepo).run(ctx)
 }
 
 func (svc *Service) ProcessRefundJobs(ctx context.Context) (int, error) {
-	return newRefundWorker(svc.repo, svc.refundCh).processDue(ctx)
+	return newRefundWorker(svc.repo, svc.refundCh, svc.couponRepo).processDue(ctx)
 }

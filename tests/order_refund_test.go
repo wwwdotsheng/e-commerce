@@ -318,6 +318,79 @@ var _ = Describe("订单退款（异步受理）", func() {
 		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
 		Expect(order.Status).To(Equal(model.OrderStatusRefunded))
 	})
+	It("worker 退款成功退回未过期优惠券", func() {
+		template := model.CouponTemplate{
+			ID: uuid.New(), Name: "退款退券", Type: model.CouponTypeFixed, DiscountValue: decimal.NewFromInt(10),
+			TotalQty: 5, RemainingQty: 5, PerUserLimit: 1,
+			StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive,
+		}
+		coupon := model.UserCoupon{
+			ID: uuid.New(), UserID: buyer.ID, TemplateID: template.ID,
+			Status: model.UserCouponStatusUnused, ExpireTime: time.Now().Add(time.Hour),
+		}
+		Expect(testDB.Create(&template).Error).To(Succeed())
+		Expect(testDB.Create(&coupon).Error).To(Succeed())
+		DeferCleanup(func() {
+			Expect(testDB.Delete(&model.UserCoupon{}, "id = ?", coupon.ID).Error).To(Succeed())
+			Expect(testDB.Delete(&model.CouponTemplate{}, "id = ?", template.ID).Error).To(Succeed())
+		})
+
+		key := uuid.NewString()
+		Expect(invariantRequest(http.MethodPost, "/api/v1/order/create", buyerToken, map[string]any{
+			"product_id": product.ID.String(), "quantity": 1, "coupon_id": coupon.ID.String(), "idempotency_key": key,
+		}).Code).To(Equal(errno.OK.FullCode()))
+		var o model.Order
+		Expect(testDB.First(&o, "idempotency_key = ?", key).Error).To(Succeed())
+		Expect(invariantRequest(http.MethodPost, "/api/v1/order/"+o.ID.String()+"/pay", buyerToken, nil).Code).
+			To(Equal(errno.OK.FullCode()))
+
+		Expect(apply(o.ID, buyerToken).Code).To(Equal(errno.OK.FullCode()))
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.UserCoupon
+		Expect(testDB.First(&stored, "id = ?", coupon.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.UserCouponStatusUnused))
+		Expect(stored.UsedOrderID).To(BeNil())
+	})
+
+	It("worker 退款成功时已过期优惠券标记 expired", func() {
+		template := model.CouponTemplate{
+			ID: uuid.New(), Name: "退款退过期券", Type: model.CouponTypeFixed, DiscountValue: decimal.NewFromInt(10),
+			TotalQty: 5, RemainingQty: 5, PerUserLimit: 1,
+			StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), Status: model.CouponStatusActive,
+		}
+		coupon := model.UserCoupon{
+			ID: uuid.New(), UserID: buyer.ID, TemplateID: template.ID,
+			Status: model.UserCouponStatusUnused, ExpireTime: time.Now().Add(time.Hour),
+		}
+		Expect(testDB.Create(&template).Error).To(Succeed())
+		Expect(testDB.Create(&coupon).Error).To(Succeed())
+		DeferCleanup(func() {
+			Expect(testDB.Delete(&model.UserCoupon{}, "id = ?", coupon.ID).Error).To(Succeed())
+			Expect(testDB.Delete(&model.CouponTemplate{}, "id = ?", template.ID).Error).To(Succeed())
+		})
+
+		key := uuid.NewString()
+		Expect(invariantRequest(http.MethodPost, "/api/v1/order/create", buyerToken, map[string]any{
+			"product_id": product.ID.String(), "quantity": 1, "coupon_id": coupon.ID.String(), "idempotency_key": key,
+		}).Code).To(Equal(errno.OK.FullCode()))
+		var o model.Order
+		Expect(testDB.First(&o, "idempotency_key = ?", key).Error).To(Succeed())
+		Expect(invariantRequest(http.MethodPost, "/api/v1/order/"+o.ID.String()+"/pay", buyerToken, nil).Code).
+			To(Equal(errno.OK.FullCode()))
+		Expect(testDB.Model(&model.UserCoupon{}).Where("id = ?", coupon.ID).
+			Update("expire_time", time.Now().Add(-time.Minute)).Error).To(Succeed())
+
+		Expect(apply(o.ID, buyerToken).Code).To(Equal(errno.OK.FullCode()))
+		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.UserCoupon
+		Expect(testDB.First(&stored, "id = ?", coupon.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.UserCouponStatusExpired))
+		Expect(stored.UsedOrderID).To(BeNil())
+	})
 	It("退款金额取订单应付快照，商品改价不影响", func() {
 		o := createPaidOrder(2) // 100 * 2 = 200
 		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).
