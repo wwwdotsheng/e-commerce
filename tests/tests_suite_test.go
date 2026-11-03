@@ -63,6 +63,7 @@ var (
 
 var logger *zap.Logger
 var testOrderService *order.Service
+var testRefundWorker *order.RefundWorker
 var testOrderMQConfig config.OrderMQConfig
 var testRabbitMQURL string
 
@@ -251,6 +252,7 @@ var _ = BeforeSuite(func() {
 	couponH := coupon.NewHandler(coupon.NewService(testDB, couponRepo, couponMetrics, businessLocation))
 	orderSvc := order.NewService(testDB, orderRepo, productRepo, couponRepo, walletRepo, orderMetrics)
 	testOrderService = orderSvc
+	testRefundWorker = order.NewRefundWorker(orderRepo, couponRepo)
 	testOrderMQConfig = config.OrderMQ
 
 	testRouter, err = app.SetupRouter(config, authSvc, userSvc, walletSvc, productSvc, orderSvc, couponH, logger, &mp)

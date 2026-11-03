@@ -227,7 +227,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 		r := decode(apply(o.ID, buyerToken))
 		Expect(r.Status).To(Equal(string(model.RefundStatusPending)))
 
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.Refund
@@ -248,7 +248,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 		o := createPaidOrder(1)
 		r := decode(apply(o.ID, buyerToken))
 
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.Refund
@@ -269,12 +269,12 @@ var _ = Describe("订单退款（异步受理）", func() {
 		o := createPaidOrder(1)
 		r := decode(apply(o.ID, buyerToken))
 
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(testDB.Model(&model.RefundJob{}).Where("refund_id = ?", r.ID).
 			Updates(map[string]any{"create_attempts": 5, "next_run_at": time.Now().Add(-time.Second)}).Error).To(Succeed())
-		_, err = testOrderService.ProcessRefundJobs(context.Background())
+		_, err = testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.Refund
@@ -296,7 +296,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 		o := createPaidOrder(1)
 		r := decode(apply(o.ID, buyerToken))
 
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var afterCreate model.Refund
@@ -308,7 +308,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 
 		Expect(testDB.Model(&model.RefundJob{}).Where("id = ?", job.ID).
 			Update("next_run_at", time.Now().Add(-time.Second)).Error).To(Succeed())
-		_, err = testOrderService.ProcessRefundJobs(context.Background())
+		_, err = testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.Refund
@@ -345,7 +345,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 			To(Equal(errno.OK.FullCode()))
 
 		Expect(apply(o.ID, buyerToken).Code).To(Equal(errno.OK.FullCode()))
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.UserCoupon
@@ -383,7 +383,7 @@ var _ = Describe("订单退款（异步受理）", func() {
 			Update("expire_time", time.Now().Add(-time.Minute)).Error).To(Succeed())
 
 		Expect(apply(o.ID, buyerToken).Code).To(Equal(errno.OK.FullCode()))
-		_, err := testOrderService.ProcessRefundJobs(context.Background())
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 
 		var stored model.UserCoupon

@@ -27,17 +27,17 @@ const (
 	refundWorkerQueryParkPeriod = 24 * time.Hour
 )
 
-type refundWorker struct {
+type RefundWorker struct {
 	repo    *Repository
 	channel refundChannel
 	coupon  *coupon.Repository
 }
 
-func newRefundWorker(repo *Repository, channel refundChannel, couponRepo *coupon.Repository) *refundWorker {
-	return &refundWorker{repo: repo, channel: channel, coupon: couponRepo}
+func NewRefundWorker(repo *Repository, couponRepo *coupon.Repository) *RefundWorker {
+	return &RefundWorker{repo: repo, channel: newMockRefundChannel(), coupon: couponRepo}
 }
 
-func (w *refundWorker) run(ctx context.Context) {
+func (w *RefundWorker) Run(ctx context.Context) {
 	ticker := time.NewTicker(refundWorkerScanInterval)
 	defer ticker.Stop()
 	for {
@@ -45,14 +45,14 @@ func (w *refundWorker) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if _, err := w.processDue(ctx); err != nil {
+			if _, err := w.ProcessRefundJobs(ctx); err != nil {
 				clog.L(ctx).Warn("退款任务扫描失败", zap.Error(err))
 			}
 		}
 	}
 }
 
-func (w *refundWorker) processDue(ctx context.Context) (int, error) {
+func (w *RefundWorker) ProcessRefundJobs(ctx context.Context) (int, error) {
 	jobs, err := w.repo.FindDueRefundJobs(ctx, refundWorkerBatchSize)
 	if err != nil {
 		return 0, err
@@ -74,7 +74,7 @@ func (w *refundWorker) processDue(ctx context.Context) (int, error) {
 	return processed, nil
 }
 
-func (w *refundWorker) processJob(ctx context.Context, job *model.RefundJob) error {
+func (w *RefundWorker) processJob(ctx context.Context, job *model.RefundJob) error {
 	refund, err := w.repo.GetRefundByID(ctx, job.RefundID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -96,7 +96,7 @@ func (w *refundWorker) processJob(ctx context.Context, job *model.RefundJob) err
 	return w.processQuery(ctx, job, refund)
 }
 
-func (w *refundWorker) processCreate(ctx context.Context, job *model.RefundJob, refund *model.Refund) error {
+func (w *RefundWorker) processCreate(ctx context.Context, job *model.RefundJob, refund *model.Refund) error {
 	createAttempts := job.CreateAttempts
 	if createAttempts >= refundWorkerMaxCreateTries {
 		return w.terminalFailed(ctx, job, "retry limit exceeded")
@@ -115,7 +115,7 @@ func (w *refundWorker) processCreate(ctx context.Context, job *model.RefundJob, 
 	return w.applyResult(ctx, job, result, createAttempts, job.QueryAttempts, true)
 }
 
-func (w *refundWorker) processQuery(ctx context.Context, job *model.RefundJob, refund *model.Refund) error {
+func (w *RefundWorker) processQuery(ctx context.Context, job *model.RefundJob, refund *model.Refund) error {
 	queryAttempts := job.QueryAttempts
 	if queryAttempts >= refundWorkerMaxQueryTries {
 		return w.repo.RescheduleRefundJob(ctx, job.ID, model.RefundJobTypeQuery,
@@ -135,7 +135,7 @@ func (w *refundWorker) processQuery(ctx context.Context, job *model.RefundJob, r
 	return w.applyResult(ctx, job, result, job.CreateAttempts, queryAttempts, false)
 }
 
-func (w *refundWorker) beginCreateAttempt(ctx context.Context, jobID, refundID uuid.UUID) error {
+func (w *RefundWorker) beginCreateAttempt(ctx context.Context, jobID, refundID uuid.UUID) error {
 	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
 		if err := w.repo.MarkRefundCreateAttempt(txCtx, jobID); err != nil {
 			return err
@@ -144,13 +144,13 @@ func (w *refundWorker) beginCreateAttempt(ctx context.Context, jobID, refundID u
 	})
 }
 
-func (w *refundWorker) beginQueryAttempt(ctx context.Context, jobID uuid.UUID) error {
+func (w *RefundWorker) beginQueryAttempt(ctx context.Context, jobID uuid.UUID) error {
 	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
 		return w.repo.MarkRefundQueryAttempt(txCtx, jobID)
 	})
 }
 
-func (w *refundWorker) applyResult(ctx context.Context, job *model.RefundJob, result refundChannelResult, createAttempts, queryAttempts int, isCreate bool) error {
+func (w *RefundWorker) applyResult(ctx context.Context, job *model.RefundJob, result refundChannelResult, createAttempts, queryAttempts int, isCreate bool) error {
 	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
 		refund, err := w.repo.GetRefundForUpdate(txCtx, job.RefundID)
 		if err != nil {
@@ -220,7 +220,7 @@ func (w *refundWorker) applyResult(ctx context.Context, job *model.RefundJob, re
 	})
 }
 
-func (w *refundWorker) terminalFailed(ctx context.Context, job *model.RefundJob, reason string) error {
+func (w *RefundWorker) terminalFailed(ctx context.Context, job *model.RefundJob, reason string) error {
 	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
 		if err := w.repo.UpdateRefundStatus(txCtx, job.RefundID, model.RefundStatusFailed, reason, nil); err != nil {
 			return err
