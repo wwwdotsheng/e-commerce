@@ -16,15 +16,14 @@ import (
 )
 
 const (
-	refundWorkerScanInterval    = 5 * time.Second
-	refundWorkerBatchSize       = 20
-	refundWorkerRecoveryDelay   = 30 * time.Second
-	refundWorkerChannelTimeout  = 10 * time.Second
-	refundWorkerMaxCreateTries  = 5
-	refundWorkerMaxQueryTries   = 10
-	refundWorkerRetryBase       = 5 * time.Second
-	refundWorkerRetryMax        = time.Minute
-	refundWorkerQueryParkPeriod = 24 * time.Hour
+	refundWorkerScanInterval   = 5 * time.Second
+	refundWorkerBatchSize      = 20
+	refundWorkerRecoveryDelay  = 30 * time.Second
+	refundWorkerChannelTimeout = 10 * time.Second
+	refundWorkerMaxCreateTries = 5
+	refundWorkerMaxQueryTries  = 10
+	refundWorkerRetryBase      = 5 * time.Second
+	refundWorkerRetryMax       = 10 * time.Minute
 )
 
 type RefundWorker struct {
@@ -82,7 +81,7 @@ func (w *RefundWorker) processJob(ctx context.Context, job *model.RefundJob) err
 		}
 		return err
 	}
-	if refund.Status == model.RefundStatusSucceeded || refund.Status == model.RefundStatusFailed {
+	if refund.Status == model.RefundStatusSucceeded || refund.Status == model.RefundStatusFailed || refund.Status == model.RefundStatusManual {
 		return w.repo.DeleteRefundJob(ctx, job.ID)
 	}
 
@@ -118,8 +117,7 @@ func (w *RefundWorker) processCreate(ctx context.Context, job *model.RefundJob, 
 func (w *RefundWorker) processQuery(ctx context.Context, job *model.RefundJob, refund *model.Refund) error {
 	queryAttempts := job.QueryAttempts
 	if queryAttempts >= refundWorkerMaxQueryTries {
-		return w.repo.RescheduleRefundJob(ctx, job.ID, model.RefundJobTypeQuery,
-			time.Now().Add(refundWorkerQueryParkPeriod), "query attempts exhausted")
+		return w.markManual(ctx, job, "query attempts exhausted")
 	}
 	if err := w.beginQueryAttempt(ctx, job.ID); err != nil {
 		return err
@@ -156,7 +154,7 @@ func (w *RefundWorker) applyResult(ctx context.Context, job *model.RefundJob, re
 		if err != nil {
 			return err
 		}
-		if refund.Status == model.RefundStatusSucceeded || refund.Status == model.RefundStatusFailed {
+		if refund.Status == model.RefundStatusSucceeded || refund.Status == model.RefundStatusFailed || refund.Status == model.RefundStatusManual {
 			return w.repo.DeleteRefundJob(txCtx, job.ID)
 		}
 
@@ -191,7 +189,7 @@ func (w *RefundWorker) applyResult(ctx context.Context, job *model.RefundJob, re
 				return err
 			}
 			return w.repo.RescheduleRefundJob(txCtx, job.ID, model.RefundJobTypeCreate,
-				time.Now().Add(retryBackoff(createAttempts)), result.FailureReason)
+				time.Now().Add(retryBackoff(backoffAttempts(isCreate, createAttempts, queryAttempts))), result.FailureReason)
 
 		case refundOutcomeNotFound:
 			if createAttempts >= refundWorkerMaxCreateTries {
@@ -206,20 +204,44 @@ func (w *RefundWorker) applyResult(ctx context.Context, job *model.RefundJob, re
 			return w.repo.RescheduleRefundJob(txCtx, job.ID, model.RefundJobTypeCreate, time.Now(), "not found")
 
 		default:
+			if !isCreate && queryAttempts >= refundWorkerMaxQueryTries {
+				if err := w.repo.UpdateRefundStatus(txCtx, refund.ID, model.RefundStatusManual, "query attempts exhausted", nil); err != nil {
+					return err
+				}
+				return w.repo.DeleteRefundJob(txCtx, job.ID)
+			}
 			if err := w.repo.UpdateRefundStatus(txCtx, refund.ID, model.RefundStatusWaitRetry, "", nil); err != nil {
 				return err
 			}
 			nextType := model.RefundJobTypeQuery
-			if !isCreate && queryAttempts >= refundWorkerMaxQueryTries {
-				return w.repo.RescheduleRefundJob(txCtx, job.ID, model.RefundJobTypeQuery,
-					time.Now().Add(refundWorkerQueryParkPeriod), "query attempts exhausted")
-			}
 			return w.repo.RescheduleRefundJob(txCtx, job.ID, nextType,
-				time.Now().Add(retryBackoff(createAttempts)), "channel result unknown")
+				time.Now().Add(retryBackoff(backoffAttempts(isCreate, createAttempts, queryAttempts))), "channel result unknown")
 		}
 	})
 }
 
+func (w *RefundWorker) markManual(ctx context.Context, job *model.RefundJob, reason string) error {
+	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
+		refund, err := w.repo.GetRefundForUpdate(txCtx, job.RefundID)
+		if err != nil {
+			return err
+		}
+		if refund.Status == model.RefundStatusSucceeded || refund.Status == model.RefundStatusFailed || refund.Status == model.RefundStatusManual {
+			return w.repo.DeleteRefundJob(txCtx, job.ID)
+		}
+		if err := w.repo.UpdateRefundStatus(txCtx, refund.ID, model.RefundStatusManual, reason, nil); err != nil {
+			return err
+		}
+		return w.repo.DeleteRefundJob(txCtx, job.ID)
+	})
+}
+
+func backoffAttempts(isCreate bool, createAttempts, queryAttempts int) int {
+	if isCreate {
+		return createAttempts
+	}
+	return queryAttempts
+}
 func (w *RefundWorker) terminalFailed(ctx context.Context, job *model.RefundJob, reason string) error {
 	return database.ExecuteTransaction(ctx, w.repo.GetDB(ctx), func(txCtx context.Context) error {
 		if err := w.repo.UpdateRefundStatus(txCtx, job.RefundID, model.RefundStatusFailed, reason, nil); err != nil {
@@ -233,7 +255,10 @@ func retryBackoff(attempt int) time.Duration {
 	if attempt < 1 {
 		attempt = 1
 	}
-	d := time.Duration(attempt) * refundWorkerRetryBase
+	d := refundWorkerRetryBase
+	for i := 1; i < attempt && d < refundWorkerRetryMax; i++ {
+		d *= 2
+	}
 	if d > refundWorkerRetryMax {
 		return refundWorkerRetryMax
 	}

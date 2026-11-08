@@ -126,6 +126,10 @@ func BuildTimeline(o *model.Order, refund *model.Refund) []TimelineEvent {
 			events = append(events, TimelineEvent{
 				Type: "refund_failed", At: refund.UpdatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
 			})
+		case refund.Status == model.RefundStatusManual:
+			events = append(events, TimelineEvent{
+				Type: "refund_manual", At: refund.UpdatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),
+			})
 		default:
 			events = append(events, TimelineEvent{
 				Type: "refund_processing", At: refund.UpdatedAt.Format(time.RFC3339), RefundID: refund.ID.String(),

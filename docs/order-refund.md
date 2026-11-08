@@ -8,7 +8,7 @@
 - 实际渠道调用由未来的后台任务执行器完成，本阶段尚未接入；
 - 因此申请成功后状态为 `pending`，不会自动变成 `succeeded`；这是预期行为。
 
-本期不做：站内钱包反向转账、库存/优惠券返还、部分退款、真实支付渠道。
+退款成功会退回本次使用的优惠券（已过期则标记 expired）；本期不做站内钱包反向转账、库存返还、部分退款、真实支付渠道。
 
 ## 两张表
 
@@ -39,11 +39,12 @@ pending ──worker领取──> processing ──成功──> succeeded（终
                              │
                              ├──可重试失败──> wait_retry ──> pending/processing
                              ├──不可重试/次数耗尽──> failed（终态）
-                             └──结果不明──> query_refund ──> succeeded / failed / create_refund
+                             ├──查询次数耗尽──> manual（终态，待人工处理）
+                             └──结果不明──> query_refund ──> succeeded / failed / manual / create_refund
 ```
 
 - `pending` / `processing` / `wait_retry`：未终态，前端显示“处理中/等待重试”；
-- `succeeded` / `failed`：终态；
+- `succeeded` / `failed` / `manual`：终态；`manual` 表示查询次数耗尽、需要人工处理；
 - 只有 `succeeded` 才把订单从 `4 已支付` 改为 `5 已退款`；
 - 订单在 `pending/processing/wait_retry/failed` 时保持 `4 已支付`。
 
@@ -67,6 +68,6 @@ pending ──worker领取──> processing ──成功──> succeeded（终
 - 调用前短事务记录尝试次数并设置 `next_run_at = now + 30s`；
 - 外部调用在事务外；结果落库时锁 `refunds` 行，同一事务更新订单状态、任务；
 - `create_refund` 结果不明 → 切 `query_refund`；查询“查无此退款” → 切回 `create_refund`；
-- create 最多 5 次、query 最多 10 次；失败按 5s、10s… 退避，最大 1 分钟；
-- query 次数耗尽仍不明 → 保留 `wait_retry`，任务 24 小时后再查（人工处理待后续）；
+- create 最多 5 次、query 最多 10 次；失败按指数退避 5s、10s、20s… 最大 10 分钟；
+- query 次数耗尽仍不明 → 退款置 `manual`、删除任务，等待人工处理（当前无后台放行入口）；
 - 崩溃恢复：`create_refund` 且退款为 `processing` 时，先查询渠道，不直接重新发起。

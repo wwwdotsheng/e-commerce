@@ -391,6 +391,33 @@ var _ = Describe("订单退款（异步受理）", func() {
 		Expect(stored.Status).To(Equal(model.UserCouponStatusExpired))
 		Expect(stored.UsedOrderID).To(BeNil())
 	})
+	It("worker 查询次数耗尽后进入 manual", func() {
+		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).
+			Update("price", decimal.NewFromInt(98)).Error).To(Succeed())
+		o := createPaidOrder(1)
+		r := decode(apply(o.ID, buyerToken))
+
+		_, err := testRefundWorker.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+		var job model.RefundJob
+		Expect(testDB.First(&job, "refund_id = ?", r.ID).Error).To(Succeed())
+		Expect(testDB.Model(&model.RefundJob{}).Where("id = ?", job.ID).
+			Updates(map[string]any{"query_attempts": 10, "next_run_at": time.Now().Add(-time.Second)}).Error).To(Succeed())
+
+		_, err = testRefundWorker.ProcessRefundJobs(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+
+		var stored model.Refund
+		Expect(testDB.First(&stored, "id = ?", r.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.RefundStatusManual))
+		Expect(stored.FailureReason).To(Equal("query attempts exhausted"))
+		var jobs int64
+		Expect(testDB.Model(&model.RefundJob{}).Where("refund_id = ?", r.ID).Count(&jobs).Error).To(Succeed())
+		Expect(jobs).To(Equal(int64(0)))
+		var order model.Order
+		Expect(testDB.First(&order, "id = ?", o.ID).Error).To(Succeed())
+		Expect(order.Status).To(Equal(model.OrderStatusPaid))
+	})
 	It("退款金额取订单应付快照，商品改价不影响", func() {
 		o := createPaidOrder(2) // 100 * 2 = 200
 		Expect(testDB.Model(&model.Product{}).Where("id = ?", product.ID).

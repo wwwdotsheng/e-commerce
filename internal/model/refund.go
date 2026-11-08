@@ -16,6 +16,7 @@ const (
 	RefundStatusWaitRetry  RefundStatus = "wait_retry"
 	RefundStatusSucceeded  RefundStatus = "succeeded"
 	RefundStatusFailed     RefundStatus = "failed"
+	RefundStatusManual     RefundStatus = "manual"
 )
 
 type Refund struct {
