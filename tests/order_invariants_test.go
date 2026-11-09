@@ -267,6 +267,64 @@ var _ = Describe("Order invariants", func() {
 		Expect(used.Status).To(Equal(model.UserCouponStatusUsed))
 	})
 
+	It("提前的超时消息经 RabbitMQ 重投后到期自动关单", func() {
+		Expect(testDB.Model(&model.Product{}).Where("id = ?", p.ID).
+			Update("stock", 3).Error).To(Succeed())
+		o := model.Order{
+			ID: uuid.New(), UserID: buyer.ID, SellerID: other.ID, ProductId: p.ID,
+			Quantity: 2, SnapshotTitle: p.Name, SnapshotPrice: p.Price,
+			PayableAmount: p.Price.Mul(decimal.NewFromInt(2)),
+			Status:        model.OrderStatusProcessing,
+			// 先于队列 30s TTL 到期，确保消费时是提前消息。
+			PaymentDeadline: time.Now().Add(10 * time.Second),
+			IdempotencyKey:  uuid.NewString(),
+		}
+		Expect(testDB.Create(&o).Error).To(Succeed())
+
+		consumerConn, err := amqp.Dial(testRabbitMQURL)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = consumerConn.Close() }()
+		consumerCh, err := consumerConn.Channel()
+		Expect(err).NotTo(HaveOccurred())
+		consumerCtx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		Expect(order.NewMqHandler(testOrderService).ListenTimeout(consumerCtx, consumerCh, testOrderMQConfig.ConsumerQueue)).
+			To(Succeed())
+
+		pubConn, err := amqp.Dial(testRabbitMQURL)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = pubConn.Close() }()
+		pubCh, err := pubConn.Channel()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(pubCh.PublishWithContext(context.Background(), "", testOrderMQConfig.ConsumerQueue,
+			false, false, amqp.Publishing{
+				DeliveryMode: amqp.Persistent,
+				Body:         []byte(o.ID.String()),
+			})).To(Succeed())
+
+		Eventually(func() model.OrderStatus {
+			var current model.Order
+			if err := testDB.First(&current, "id = ?", o.ID).Error; err != nil {
+				return -1
+			}
+			return current.Status
+		}, 2*time.Second, 100*time.Millisecond).Should(Equal(model.OrderStatusProcessing))
+
+		Eventually(func() model.OrderStatus {
+			var current model.Order
+			if err := testDB.First(&current, "id = ?", o.ID).Error; err != nil {
+				return -1
+			}
+			return current.Status
+		}, 40*time.Second, 500*time.Millisecond).Should(Equal(model.OrderStatusTimeout))
+
+		var stored model.Order
+		Expect(testDB.First(&stored, "id = ?", o.ID).Error).To(Succeed())
+		Expect(stored.ClosedAt).NotTo(BeNil())
+		Expect(stored.PaidAt).To(BeNil())
+		Expect(stock()).To(Equal(5))
+	})
+
 	It("does not return a completed order's coupon or inventory", func() {
 		key := uuid.NewString()
 		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
