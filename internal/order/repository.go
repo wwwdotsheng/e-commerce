@@ -139,8 +139,6 @@ func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.
 		}
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(5 * time.Second):
-		return errors.New("timeout message publish confirm timeout")
 	}
 
 	select {
