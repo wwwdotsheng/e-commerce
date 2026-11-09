@@ -8,7 +8,6 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,11 +32,6 @@ type Repository struct {
 	*database.BaseRepo
 	mqCh  *amqp.Channel
 	mqCfg *config.OrderMQConfig
-
-	publishOnce sync.Once
-	publishErr  error
-	returnsMu   sync.Mutex
-	returns     map[string]chan struct{}
 }
 
 func NewRepository(db *gorm.DB, mqCh *amqp.Channel, cfg *config.OrderMQConfig) *Repository {
@@ -45,7 +39,6 @@ func NewRepository(db *gorm.DB, mqCh *amqp.Channel, cfg *config.OrderMQConfig) *
 		BaseRepo: database.NewBaseRepo(db),
 		mqCh:     mqCh,
 		mqCfg:    cfg,
-		returns:  make(map[string]chan struct{}),
 	}
 }
 
@@ -82,9 +75,6 @@ func (repo *Repository) SetupMQ(cfg *config.OrderMQConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to declare delay queue %s: %w", cfg.DelayQueue, err)
 	}
-	if err := repo.enablePublisherConfirms(); err != nil {
-		return fmt.Errorf("enable publisher confirms: %w", err)
-	}
 	return nil
 }
 
@@ -102,72 +92,16 @@ func (repo *Repository) CreateOrder(ctx context.Context, order *model.Order) err
 }
 
 func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.UUID) error {
-	if err := repo.enablePublisherConfirms(); err != nil {
-		return err
-	}
-
-	messageID := uuid.NewString()
-	returned := make(chan struct{}, 1)
-	repo.returnsMu.Lock()
-	repo.returns[messageID] = returned
-	repo.returnsMu.Unlock()
-	defer func() {
-		repo.returnsMu.Lock()
-		delete(repo.returns, messageID)
-		repo.returnsMu.Unlock()
-	}()
-
-	confirmation, err := repo.mqCh.PublishWithDeferredConfirmWithContext(ctx,
+	return repo.mqCh.PublishWithContext(ctx,
 		"",
 		repo.mqCfg.DelayQueue,
-		true,
+		false,
 		false,
 		amqp.Publishing{
 			DeliveryMode: amqp.Persistent,
-			MessageId:    messageID,
 			Body:         []byte(orderID.String()),
 		},
 	)
-	if err != nil {
-		return fmt.Errorf("publish timeout message: %w", err)
-	}
-
-	select {
-	case <-confirmation.Done():
-		if !confirmation.Acked() {
-			return errors.New("timeout message publish nacked")
-		}
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-
-	select {
-	case <-returned:
-		return errors.New("timeout message unroutable")
-	case <-time.After(10 * time.Millisecond):
-		return nil
-	}
-}
-
-func (repo *Repository) enablePublisherConfirms() error {
-	repo.publishOnce.Do(func() {
-		if err := repo.mqCh.Confirm(false); err != nil {
-			repo.publishErr = fmt.Errorf("confirm.select: %w", err)
-			return
-		}
-		repo.watchReturns(repo.mqCh.NotifyReturn(make(chan amqp.Return, 32)))
-	})
-	return repo.publishErr
-}
-
-func (repo *Repository) watchReturns(returns <-chan amqp.Return) {
-	for returned := range returns {
-		repo.returnsMu.Lock()
-		if ch, ok := repo.returns[returned.MessageId]; ok {
-			close(ch)
-		}
-		repo.returnsMu.Unlock()
-	}
 }
 
 // FindByIdempotencyKey must also validate ownership and payload at the service layer.
