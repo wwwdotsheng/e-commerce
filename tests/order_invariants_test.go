@@ -245,6 +245,28 @@ var _ = Describe("Order invariants", func() {
 		Expect(stock()).To(Equal(5))
 	})
 
+	It("已支付订单收到超时消息不关闭也不返还资源", func() {
+		key := uuid.NewString()
+		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))
+		o := findOrder(key)
+		paidAt := time.Now().Add(-time.Minute)
+		Expect(testDB.Model(&model.Order{}).Where("id = ?", o.ID).
+			Updates(map[string]any{"status": model.OrderStatusPaid, "paid_at": paidAt}).Error).To(Succeed())
+		expireOrder(o.ID)
+
+		Expect(testOrderService.HandleOrderTimeout(context.Background(), o.ID)).To(Succeed())
+
+		var stored model.Order
+		Expect(testDB.First(&stored, "id = ?", o.ID).Error).To(Succeed())
+		Expect(stored.Status).To(Equal(model.OrderStatusPaid))
+		Expect(stored.PaidAt).NotTo(BeNil())
+		Expect(stored.ClosedAt).To(BeNil())
+		Expect(stock()).To(Equal(3))
+		var used model.UserCoupon
+		Expect(testDB.First(&used, "id = ?", uc.ID).Error).To(Succeed())
+		Expect(used.Status).To(Equal(model.UserCouponStatusUsed))
+	})
+
 	It("does not return a completed order's coupon or inventory", func() {
 		key := uuid.NewString()
 		Expect(create(key, 2, uc.ID.String()).Code).To(Equal(errno.OK.FullCode()))

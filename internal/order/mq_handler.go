@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"e-commerce/pkg/clog"
+	"errors"
 	"fmt"
 	"time"
 
@@ -100,6 +101,10 @@ func (h *MqHandler) handleSingleMessage(ctx context.Context, d amqp.Delivery) {
 		}
 		if attempt == maxRetries {
 			logger.Error("timeout delivery exhausted retries", zap.String("order_id", orderID.String()), zap.Int("retries", maxRetries), zap.Error(err))
+			if errors.Is(err, errOrderTimeoutRequeueFailed) {
+				_ = d.Nack(false, true)
+				return
+			}
 			_ = d.Reject(false)
 			return
 		}

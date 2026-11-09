@@ -28,8 +28,9 @@ const (
 type OrderTimeoutStatus string
 
 const (
-	orderTimeoutStatusClosed OrderTimeoutStatus = "closed"
-	orderTimeoutStatusFail   OrderTimeoutStatus = "fail"
+	orderTimeoutStatusClosed   OrderTimeoutStatus = "closed"
+	orderTimeoutStatusRequeued OrderTimeoutStatus = "requeued"
+	orderTimeoutStatusFail     OrderTimeoutStatus = "fail"
 )
 
 type OrderPaymentStatus string

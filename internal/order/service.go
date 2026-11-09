@@ -19,6 +19,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var errOrderTimeoutRequeueFailed = errors.New("order timeout requeue failed")
+
 type Service struct {
 	db          *gorm.DB
 	repo        *Repository
@@ -196,10 +198,14 @@ func calcCouponDeduction(t *model.CouponTemplate, orderAmount decimal.Decimal) d
 }
 
 func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (err error) {
+	requeued := false
 	defer func() {
-		if err != nil {
+		switch {
+		case err != nil:
 			svc.metrics.AddOrderTimeoutTotal(ctx, orderTimeoutStatusFail)
-		} else {
+		case requeued:
+			svc.metrics.AddOrderTimeoutTotal(ctx, orderTimeoutStatusRequeued)
+		default:
 			svc.metrics.AddOrderTimeoutTotal(ctx, orderTimeoutStatusClosed)
 		}
 	}()
@@ -234,8 +240,9 @@ func (svc *Service) HandleOrderTimeout(ctx context.Context, orderID uuid.UUID) (
 	if notDue != nil {
 		// 提前到达的消息重新投递到延迟队列，等截止时间过后再关闭，绝不提前关单。
 		if err := svc.repo.PublishTimeoutMessage(ctx, notDue.ID); err != nil {
-			return fmt.Errorf("requeue early timeout message: %w", err)
+			return fmt.Errorf("%w: %v", errOrderTimeoutRequeueFailed, err)
 		}
+		requeued = true
 	}
 	return nil
 }
