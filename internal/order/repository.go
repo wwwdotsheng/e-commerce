@@ -8,7 +8,6 @@ import (
 	"e-commerce/pkg/errno"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -33,10 +32,6 @@ type Repository struct {
 	*database.BaseRepo
 	mqCh  *amqp.Channel
 	mqCfg *config.OrderMQConfig
-
-	watchOnce sync.Once
-	returnsMu sync.Mutex
-	returns   map[string]chan struct{}
 }
 
 func NewRepository(db *gorm.DB, mqCh *amqp.Channel, cfg *config.OrderMQConfig) *Repository {
@@ -44,7 +39,6 @@ func NewRepository(db *gorm.DB, mqCh *amqp.Channel, cfg *config.OrderMQConfig) *
 		BaseRepo: database.NewBaseRepo(db),
 		mqCh:     mqCh,
 		mqCfg:    cfg,
-		returns:  make(map[string]chan struct{}),
 	}
 }
 
@@ -98,57 +92,16 @@ func (repo *Repository) CreateOrder(ctx context.Context, order *model.Order) err
 }
 
 func (repo *Repository) PublishTimeoutMessage(ctx context.Context, orderID uuid.UUID) error {
-	repo.ensureReturnWatcher()
-
-	messageID := uuid.NewString()
-	returned := make(chan struct{}, 1)
-	repo.returnsMu.Lock()
-	repo.returns[messageID] = returned
-	repo.returnsMu.Unlock()
-	defer func() {
-		repo.returnsMu.Lock()
-		delete(repo.returns, messageID)
-		repo.returnsMu.Unlock()
-	}()
-
-	if err := repo.mqCh.PublishWithContext(ctx,
+	return repo.mqCh.PublishWithContext(ctx,
 		"",
 		repo.mqCfg.DelayQueue,
-		true,
+		false,
 		false,
 		amqp.Publishing{
 			DeliveryMode: amqp.Persistent,
-			MessageId:    messageID,
 			Body:         []byte(orderID.String()),
 		},
-	); err != nil {
-		return fmt.Errorf("publish timeout message: %w", err)
-	}
-
-	select {
-	case <-returned:
-		return errors.New("timeout message unroutable")
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(50 * time.Millisecond):
-		return nil
-	}
-}
-
-func (repo *Repository) ensureReturnWatcher() {
-	repo.watchOnce.Do(func() {
-		repo.watchReturns(repo.mqCh.NotifyReturn(make(chan amqp.Return, 32)))
-	})
-}
-
-func (repo *Repository) watchReturns(returns <-chan amqp.Return) {
-	for returned := range returns {
-		repo.returnsMu.Lock()
-		if ch, ok := repo.returns[returned.MessageId]; ok {
-			close(ch)
-		}
-		repo.returnsMu.Unlock()
-	}
+	)
 }
 
 // FindByIdempotencyKey must also validate ownership and payload at the service layer.
