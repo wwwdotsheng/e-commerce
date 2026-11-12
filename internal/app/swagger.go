@@ -1,14 +1,10 @@
 package app
 
 import (
-	_ "embed"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
-
-//go:embed openapi.yaml
-var openapiSpec []byte
 
 const swaggerUIHTML = `<!DOCTYPE html>
 <html>
@@ -36,5 +32,10 @@ func swaggerUI(c *gin.Context) {
 }
 
 func swaggerDoc(c *gin.Context) {
-	c.Data(http.StatusOK, "text/yaml; charset=utf-8", openapiSpec)
+	spec, err := openapiSpec()
+	if err != nil {
+		c.String(http.StatusInternalServerError, "OpenAPI document is unavailable")
+		return
+	}
+	c.Data(http.StatusOK, "text/yaml; charset=utf-8", spec)
 }

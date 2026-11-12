@@ -1,0 +1,42 @@
+paths:
+  /user/register:
+    post:
+      tags: [用户]
+      summary: 用户注册
+      operationId: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: |
+            00000 注册成功
+            特有错误：A01102 用户名或邮箱已存在
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+components:
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [user_name, email, password]
+      properties:
+        user_name:
+          type: string
+          minLength: 3
+          maxLength: 32
+          pattern: "^[a-zA-Z0-9_\\u4e00-\\u9fa5]+$"
+          example: zhangsan
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 32

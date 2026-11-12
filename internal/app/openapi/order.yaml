@@ -1,0 +1,308 @@
+paths:
+  /order/create:
+    post:
+      tags: [订单]
+      summary: 创建订单
+      operationId: CreateOrder
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: |
+            00000 下单成功
+            特有错误：A04101 库存不足、A05100 商品 ID 不存在
+            注意：幂等键重复时不返回错误，视为成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+  /order/list:
+    get:
+      tags: [订单]
+      summary: 订单列表
+      operationId: ListOrders
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/OrderListResponse'
+
+  /order/{id}:
+    get:
+      tags: [订单]
+      summary: 订单详情
+      description: 仅买家可查询自己的订单；卖家或其他角色调用返回 A02100。
+      operationId: GetOrderByID
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功返回订单详情；订单不存在或不属于当前用户时返回 A00002，非买家调用返回 A02100
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/OrderDetailResponse'
+
+  /order/{id}/pay:
+    post:
+      tags: [订单]
+      summary: 使用账户余额支付订单
+      description: |
+        仅买家可调用；卖家或其他角色返回 A02100。
+        买家为自己的待支付订单付款：在同一事务内扣减买家余额、记入商家余额，并把订单转为已支付。
+        重复支付返回已有订单，不重复扣款；已关闭或超过支付截止时间的订单拒绝支付。
+      operationId: PayOrder
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            000000 支付成功，或订单已支付时返回已有结果
+            特有错误：A02100 非买家调用、A00002 订单不存在或不属于当前用户、A03102 余额不足
+            A05102 订单当前状态不可支付、A05103 已超过支付截止时间
+            A05104 历史充值键占用了订单流水键，需人工清理
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/OrderDetailResponse'
+
+  /order/{id}/refund:
+    post:
+      tags: [订单]
+      summary: 申请订单全额退款（模拟渠道）
+      description: |
+        仅买家可调用（非买家返回 A02100）。
+        受理接口只做校验并把退款记录和待执行任务写入数据库，立即返回 pending/处理中；
+        不在 HTTP 请求内调用第三方，也不会自动完成退款。
+        一个订单最多一条退款记录；重复/并发申请返回同一条记录，不重复创建任务。
+        后台 worker 每 5 秒异步处理：create_refund 调渠道，结果不明转 query_refund 继续确认。
+      operationId: ApplyOrderRefund
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 统一 API 响应；data 为退款记录（pending/处理中）；非买家返回 A02100
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/RefundResponse'
+
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      required: [product_id, quantity, idempotency_key]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        coupon_id:
+          type: string
+          format: uuid
+          description: 可选，要使用的用户优惠券 ID
+        idempotency_key:
+          type: string
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+          description: 买家账号 ID
+        seller_id:
+          type: string
+          format: uuid
+          description: 商家账号 ID，下单时从商品记录获取
+        product_id:
+          type: string
+          format: uuid
+        snapshot_title:
+          type: string
+        quantity:
+          type: integer
+        snapshot_price:
+          type: number
+          format: float
+        discount_amount:
+          type: number
+          format: float
+          description: 优惠券抵扣金额
+        payable_amount:
+          type: number
+          format: float
+          description: 下单时确定并保存的应付金额，最低为 0
+        total_amount:
+          type: number
+          format: float
+          description: 兼容字段，与 payable_amount 相同
+        payment_deadline:
+          type: string
+          format: date-time
+          description: 支付截止时间，下单时确定，重复下单不延长
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 支付成功时间，未支付时为 null
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 订单关闭时间，未关闭时为 null
+        close_reason:
+          type: string
+          nullable: true
+          enum: [payment_timeout]
+          description: 关闭原因码，仅超时关闭时写入
+        status:
+          type: integer
+          description: "0=处理中 1=已完成 2=已取消 3=超时 4=已支付 5=已退款"
+        created_at:
+          type: string
+          format: date-time
+
+    OrderListResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                orders:
+                  type: array
+                  items:
+                    $ref: '../openapi.yaml#/components/schemas/OrderItem'
+                total:
+                  type: integer
+
+    OrderDetailResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              allOf:
+                - $ref: '../openapi.yaml#/components/schemas/OrderItem'
+                - type: object
+                  properties:
+                    refund:
+                      $ref: '../openapi.yaml#/components/schemas/RefundDetail'
+                    timeline:
+                      type: array
+                      description: 订单状态时间线，由订单和退款记录拼出
+                      items:
+                        $ref: '../openapi.yaml#/components/schemas/TimelineEvent'
+                    coupon_id:
+                      type: string
+                      format: uuid
+                      description: 使用的用户优惠券 ID；未使用优惠券时省略
+                    updated_at:
+                      type: string
+                      format: date-time
+
+    TimelineEvent:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [order_created, payment_succeeded, payment_timeout, order_closed, refund_requested, refund_processing, refund_succeeded, refund_failed, refund_manual]
+        at:
+          type: string
+          format: date-time
+        refund_id:
+          type: string
+          format: uuid
+          description: 退款相关事件返回，其他事件省略
+
+    RefundDetail:
+      type: object
+      nullable: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, processing, wait_retry, succeeded, failed, manual]
+          description: pending=待处理 processing=处理中 wait_retry=等待重试 succeeded=成功 failed=最终失败 manual=需要人工处理
+        amount:
+          type: number
+          format: double
+          description: 全额退款金额，等于订单下单时保存的应付金额
+        failure_reason:
+          type: string
+          description: 退款明确失败时的原因
+        refunded_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 退款成功时间；失败/确认中为 null
+        updated_at:
+          type: string
+          format: date-time
+
+    RefundResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '../openapi.yaml#/components/schemas/RefundDetail'
+
+
+    # === 优惠券 ===

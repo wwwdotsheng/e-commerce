@@ -1,0 +1,123 @@
+paths:
+  /shop/create:
+    post:
+      tags: [店铺]
+      summary: 创建店铺
+      operationId: CreateShop
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateShopRequest'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ShopResponse'
+
+  /shop/list:
+    get:
+      tags: [店铺]
+      summary: 店铺列表
+      operationId: ListShops
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: 店铺列表
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ShopListResponse'
+
+  /shop/{id}:
+    get:
+      tags: [店铺]
+      summary: 店铺详情
+      operationId: GetShop
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 店铺详情
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ShopResponse'
+
+components:
+  schemas:
+    CreateShopRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 500
+
+    ShopItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+
+    ShopResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '../openapi.yaml#/components/schemas/ShopItem'
+
+    ShopListResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                shops:
+                  type: array
+                  items:
+                    $ref: '../openapi.yaml#/components/schemas/ShopItem'
+                total:
+                  type: integer

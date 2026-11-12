@@ -1,0 +1,41 @@
+paths:
+  /wallet/deposit:
+    post:
+      tags: [钱包]
+      summary: 钱包充值
+      operationId: Deposit
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/DepositRequest'
+      responses:
+        '200':
+          description: |
+            00000 充值成功
+            特有错误：A03101 充值金额非法、A03103 幂等键非法（空、超过 64 字符、含非法字符或以 order: 开头）
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+components:
+  schemas:
+    DepositRequest:
+      type: object
+      required: [amount, idempotency_key]
+      properties:
+        amount:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+          description: 充值金额，必须大于 0
+        idempotency_key:
+          type: string
+          maxLength: 64
+          pattern: '^[A-Za-z0-9._:-]+$'
+          description: '幂等键，防止重复充值；不允许占用 order: 系统命名空间'

@@ -1,0 +1,311 @@
+paths:
+  /product/create:
+    post:
+      tags: [商品]
+      summary: 创建商品
+      operationId: CreateProduct
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateProductRequest'
+      responses:
+        '200':
+          description: |
+            00000 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+  /product/list:
+    get:
+      tags: [商品]
+      summary: 商品列表
+      operationId: ListProducts
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ProductListResponse'
+
+  /product/search:
+    get:
+      tags: [商品]
+      summary: 搜索商品
+      operationId: SearchProducts
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+        - name: max_price
+          in: query
+          required: false
+          schema:
+            type: number
+            format: float
+        - name: page_num
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: page_size
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+        - name: shop_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 搜索结果
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ProductListResponse'
+
+  /product/{id}:
+    get:
+      tags: [商品]
+      summary: 商品详情
+      operationId: GetProduct
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            00000 成功
+            特有错误：A04102 商品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ProductDetailResponse'
+
+    patch:
+      tags: [商品]
+      summary: 更新商品属性
+      operationId: UpdateProductProperty
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UpdateProductPropertyRequest'
+      responses:
+        '200':
+          description: |
+            00000 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+    delete:
+      tags: [商品]
+      summary: 删除商品
+      operationId: DeleteProduct
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: |
+            00000 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+  /product/{id}/status:
+    post:
+      tags: [商品]
+      summary: 更新商品状态
+      operationId: UpdateProductStatus
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/UpdateProductStatusRequest'
+      responses:
+        '200':
+          description: |
+            00000 更新成功
+            特有错误：A04103 商品状态参数无效
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+
+components:
+  schemas:
+    CreateProductRequest:
+      type: object
+      required: [name, description, price, status, stock]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 3000
+        price:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+        status:
+          type: string
+          enum: [active, inactive]
+        stock:
+          type: integer
+          minimum: 0
+        shop_id:
+          type: string
+          format: uuid
+          description: 可选，关联的店铺 ID
+
+    UpdateProductPropertyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 3000
+        price:
+          type: number
+          format: float
+          minimum: 0
+          exclusiveMinimum: true
+
+    UpdateProductStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+
+    ProductItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        publisher:
+          type: string
+          format: uuid
+        name:
+          type: string
+        price:
+          type: number
+          format: float
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+
+    ProductDetail:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ProductItem'
+        - type: object
+          properties:
+            description:
+              type: string
+
+    ProductListResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                products:
+                  type: array
+                  items:
+                    $ref: '../openapi.yaml#/components/schemas/ProductItem'
+                total:
+                  type: integer
+
+    ProductDetailResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '../openapi.yaml#/components/schemas/ProductDetail'

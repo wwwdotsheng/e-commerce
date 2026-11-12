@@ -1,0 +1,236 @@
+paths:
+  /coupon/template:
+    post:
+      tags: [优惠券]
+      summary: 创建优惠券模板
+      operationId: CreateCouponTemplate
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/CreateTemplateRequest'
+      responses:
+        '200':
+          description: |
+            00000 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/TemplateResponse'
+
+  /coupon/grant:
+    post:
+      tags: [优惠券]
+      summary: 给用户发券
+      operationId: GrantCoupon
+      security:
+        - AccessTokenAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../openapi.yaml#/components/schemas/GrantCouponRequest'
+      responses:
+        '200':
+          description: |
+            00000 发券成功
+            特有错误：券模板不存在、已过期、库存不足、超过每人限领数量
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/UserCouponResponse'
+
+  /coupon/list:
+    get:
+      tags: [优惠券]
+      summary: 查看我的优惠券
+      operationId: ListUserCoupons
+      security:
+        - AccessTokenAuth: []
+      parameters:
+        - name: page_num
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: |
+            00000 成功
+          content:
+            application/json:
+              schema:
+                $ref: '../openapi.yaml#/components/schemas/UserCouponListResponse'
+
+components:
+  schemas:
+    CreateTemplateRequest:
+      type: object
+      required: [name, type, total_qty, start_time, end_time]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        type:
+          type: string
+          enum: [fixed_amount, percentage]
+        discount_value:
+          type: number
+          format: float
+          minimum: 0
+          description: 满减金额（type=fixed_amount 时填写）
+        discount_rate:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: 折扣率（type=percentage 时填写，如 0.8 表示八折）
+        max_deduction:
+          type: number
+          format: float
+          minimum: 0
+          description: 折扣封顶金额（type=percentage 时可用）
+        min_amount:
+          type: number
+          format: float
+          minimum: 0
+          description: 最低消费金额
+        total_qty:
+          type: integer
+          minimum: 1
+        per_user_limit:
+          type: integer
+          minimum: 1
+          default: 1
+        start_time:
+          type: string
+          format: date-time
+          description: 推荐 RFC3339（带时区，如 2026-06-01T00:00:00+08:00）；兼容历史格式 "YYYY-MM-DD HH:MM:SS"，按业务时区解释
+          example: "2026-06-01T00:00:00+08:00"
+        end_time:
+          type: string
+          format: date-time
+          description: 推荐 RFC3339（带时区）；兼容历史格式 "YYYY-MM-DD HH:MM:SS"，必须晚于 start_time
+          example: "2026-06-30T23:59:59+08:00"
+
+    TemplateItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        discount_value:
+          type: number
+        discount_rate:
+          type: number
+        max_deduction:
+          type: number
+        min_amount:
+          type: number
+        total_qty:
+          type: integer
+        remaining_qty:
+          type: integer
+        per_user_limit:
+          type: integer
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TemplateResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '../openapi.yaml#/components/schemas/TemplateItem'
+
+    GrantCouponRequest:
+      type: object
+      required: [template_id, user_id]
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+
+    UserCouponItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_id:
+          type: string
+          format: uuid
+        template_name:
+          type: string
+        type:
+          type: string
+        discount_value:
+          type: number
+        discount_rate:
+          type: number
+        max_deduction:
+          type: number
+        min_amount:
+          type: number
+        status:
+          type: string
+          enum: [unused, used, expired]
+        expire_time:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    UserCouponResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '../openapi.yaml#/components/schemas/UserCouponItem'
+
+    UserCouponListResponse:
+      allOf:
+        - $ref: '../openapi.yaml#/components/schemas/ApiResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                coupons:
+                  type: array
+                  items:
+                    $ref: '../openapi.yaml#/components/schemas/UserCouponItem'
+                total:
+                  type: integer
