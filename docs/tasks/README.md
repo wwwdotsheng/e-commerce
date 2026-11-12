@@ -4,12 +4,15 @@
 
 ## 当前规划
 
-- [TASK-001 站内钱包订单退款原路退回](active/TASK-001-wallet-refund.md)
+暂无。
 
 ## 后续任务
 
+- [TASK-002 支付宝沙箱支付与原路退款](TASK-002-alipay-sandbox.md)。暂缓接入。
 - [商家同意退款操作](../requirements/order-refund.md#商家同意退款)。确定审批范围、权限和状态流转后，再建立独立任务。
 
 ## 历史任务
+
+- [TASK-001 站内钱包订单退款原路退回](active/TASK-001-wallet-refund.md)，已完成，待归档决定。
 
 已完成且经人工确认保留的任务归档到 `docs/tasks/archive/`。任务文件保留原有验收记录和交付结果。
