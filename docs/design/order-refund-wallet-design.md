@@ -60,11 +60,13 @@ flowchart TD
     C --> D["返回 pending"]
     D --> E["worker：扫描到期任务"]
     E --> F["事务：锁 order、refund、商家钱包、买家钱包"]
-    F --> G{"商家余额 >= 退款金额？"}
+    F --> Z{"零元退款？"}
+    Z -->|"是"| K
+    Z -->|"否"| G{"商家余额 >= 退款金额？"}
     G -->|"否"| H["refund=wait_retry<br/>记录 seller_balance_insufficient"]
     H --> I["指数退避后再试"]
     I --> E
-    G -->|"是"| J["商家余额扣减<br/>买家余额增加<br/>写两笔退款流水"]
+    G -->|"是"| J["正金额退款<br/>商家余额扣减、买家余额增加<br/>写两笔退款流水"]
     J --> K["退优惠券（过期标 expired）"]
     K --> L["refund=succeeded<br/>order 4→5<br/>删除 job"]
     J --> M{"任一步失败"}
@@ -73,9 +75,9 @@ flowchart TD
 
 资金动作和退款状态必须在同一个数据库事务里：
 
-1. 条件扣商家余额：`WHERE balance >= amount`；
-2. 加买家余额；
-3. 写商家扣款、买家入账两条 `wallet_logs`，幂等键包含 `refund_id`；
+1. 正金额退款条件扣商家余额：`WHERE balance >= amount`；
+2. 正金额退款加买家余额；
+3. 正金额退款写商家扣款、买家入账两条 `wallet_logs`，幂等键包含 `refund_id`；
 4. 更新 refund / order；
 5. 删除 refund_job。
 
@@ -114,7 +116,7 @@ flowchart TD
 
 ### 6.3 零元订单
 
-- `payable_amount = 0` 时跳过钱包转账和资金流水；
+- `payable_amount = 0` 时双方余额保持原值，保留退款记录并更新订单状态，不写入 `wallet_logs`；
 - 退款仍走状态机：`pending → succeeded`；
 - 优惠券按 6.5 处理；
 - 订单正常 `4 → 5`。
@@ -145,7 +147,7 @@ flowchart TD
 - 再根据退款当前状态追加一个事件；
 - 不保留历史重试记录。
 
-当前代码把 `wait_retry` 映射成 `refund_processing`，用户看到的是“退款处理中”，而不是“退款执行异常、等待重试”。这不符合“异常要在 timeline 上可见”的要求。
+当前代码把 `wait_retry` 映射成 `refund_processing`，用户看到的是“退款处理中”。下表是待评审的状态映射，买家侧统一使用可公开的退款状态与提示。
 
 建议映射：
 
@@ -157,11 +159,7 @@ flowchart TD
 | `failed` | `refund_failed` | 终态失败 |
 | `succeeded` | `refund_succeeded` | 退款成功 |
 
-异常事件建议带可选 `reason`：
-
-- `wait_retry`：`商家余额不足，等待重试` / `钱包服务暂时失败`；
-- `manual`：`商家余额不足且重试耗尽` / `退款数据异常`；
-- `failed`：可展示的失败原因，不能暴露 SQL/内部错误。
+内部保留余额不足、重试耗尽和数据异常等原因供排查。买家可见的时间线和 `reason` 使用通用退款提示，最终失败时订单详情的 `refund.failure_reason` 返回「本次退款未完成」。商家余额和余额不足原因仅在内部使用。
 
 本期只展示“当前异常状态 + 最近原因”，不做每一次重试的完整历史；如果以后要展示完整链路，需要新增 `refund_events` 事件表，而不是继续从当前状态反推。
 
@@ -172,7 +170,7 @@ flowchart TD
 | 1 | 订单 100 元，商家余额 100 | 商家 0，买家 +100，refund=succeeded，order=5 |
 | 2 | 订单 100 元，商家余额 30 | refund=wait_retry，两方余额不变；timeline 显示 `refund_wait_retry` |
 | 3 | 商家余额不足且重试耗尽 | refund=manual；timeline 显示 `refund_manual`，等待人工补足/平台决策 |
-| 4 | 零元订单（券全额抵扣） | 无资金流水，refund=succeeded，券按规则退回/过期 |
+| 4 | 零元订单（券全额抵扣） | 双方余额不变，不写钱包流水，refund=succeeded，券按规则退回/过期 |
 | 5 | 同一订单并发两次申请 | 只有一条 refund、一次转账、一次退券 |
 | 6 | 已退款订单再次申请 | 返回已有退款，不重复转账 |
 | 7 | 商家钱包记录缺失 | refund=manual，不扣买家、不写半套流水 |
@@ -196,6 +194,5 @@ flowchart TD
 
 1. 商家余额不足时，产品是否接受“买家等待 + manual”，还是要求平台垫资？
 2. 是否允许商家负余额？本文选择不允许。
-3. 库存返还策略是否确认“退款不返库存”？
-4. 零元退款是否要写 0 元流水作为审计标记？
-5. 方案 B 是否保留现有 `pending` 接口契约？
+3. 如何用现有流水结构关联退款 ID 并保证重复执行只写入一组流水？
+4. 方案 B 是否保留现有 `pending` 接口契约？
