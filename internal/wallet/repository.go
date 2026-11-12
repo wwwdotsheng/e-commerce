@@ -21,7 +21,7 @@ var (
 	// ErrWalletLogAlreadyExists 表示 wallet_logs 的全局唯一幂等键已被占用。
 	// 充值路径把它当作重复请求；订单支付路径必须由上层翻译成明确的业务错误。
 	ErrWalletLogAlreadyExists = errors.New("wallet log already exists")
-	// ErrInsufficientBalance 买家钱包余额不足以完成本次扣款。
+	// ErrInsufficientBalance 钱包余额不足以完成本次扣款。
 	ErrInsufficientBalance = errors.New("wallet balance is insufficient")
 	// ErrSellerWalletMissing 商家账号缺少钱包记录，属于需要人工处理的数据异常。
 	ErrSellerWalletMissing = errors.New("seller wallet missing")
@@ -142,6 +142,49 @@ func (repo *Repository) CreditOrderIncome(ctx context.Context, sellerID uuid.UUI
 	if result.RowsAffected != 1 {
 		// 商家账号应随注册创建钱包；缺失说明数据异常，整笔支付回滚。
 		return fmt.Errorf("%w: seller %s", ErrSellerWalletMissing, sellerID)
+	}
+	return nil
+}
+
+// TransferOrderRefund 在调用方事务内退回正金额订单款项。
+// 与订单支付一样先锁买家钱包、再锁商家钱包，避免支付和退款反向加锁。
+func (repo *Repository) TransferOrderRefund(ctx context.Context, buyerID, sellerID, refundID uuid.UUID, amount decimal.Decimal) error {
+	db := repo.GetDB(ctx)
+	var buyer, seller model.UserWallet
+	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).Take(&buyer, "user_id = ?", buyerID).Error; err != nil {
+		return fmt.Errorf("lock refund buyer wallet: %w", err)
+	}
+	if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).Take(&seller, "user_id = ?", sellerID).Error; err != nil {
+		return fmt.Errorf("lock refund seller wallet: %w", err)
+	}
+	if seller.Balance.LessThan(amount) {
+		return ErrInsufficientBalance
+	}
+
+	refundRef := "refund:" + refundID.String()
+	keyPrefix := orderLogKeyPrefix + refundRef + ":"
+	entries := []model.WalletLog{
+		{
+			UserID: seller.UserID, SessionID: refundRef, Amount: amount.Neg(),
+			Type: model.WalletLogTypeRefundDebit, IdempotencyKey: keyPrefix + "debit",
+		},
+		{
+			UserID: buyer.UserID, SessionID: refundRef, Amount: amount,
+			Type: model.WalletLogTypeRefundCredit, IdempotencyKey: keyPrefix + "credit",
+		},
+	}
+	for _, entry := range entries {
+		if err := repo.createLog(ctx, &entry); err != nil {
+			return fmt.Errorf("write refund wallet log for user %s: %w", entry.UserID, err)
+		}
+		result := db.Model(&model.UserWallet{}).Where("user_id = ?", entry.UserID).
+			Update("balance", gorm.Expr("user_wallets.balance + ?", entry.Amount))
+		if result.Error != nil {
+			return fmt.Errorf("update refund balance for user %s: %w", entry.UserID, result.Error)
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("refund balance update affected %d wallets for user %s", result.RowsAffected, entry.UserID)
+		}
 	}
 	return nil
 }

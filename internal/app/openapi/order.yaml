@@ -113,9 +113,9 @@ paths:
       description: |
         仅买家可调用（非买家返回 A02100）。
         受理接口只做校验并把退款记录和待执行任务写入数据库，立即返回 pending/处理中；
-        不在 HTTP 请求内调用第三方，也不会自动完成退款。
+        资金变动由后台处理，客户端可通过订单详情查询结果。
         一个订单最多一条退款记录；重复/并发申请返回同一条记录，不重复创建任务。
-        后台 worker 每 5 秒异步处理：create_refund 调渠道，结果不明转 query_refund 继续确认。
+        后台每 5 秒扫描到期任务，将原订单款项从商家钱包退回买家钱包。
       operationId: ApplyOrderRefund
       security:
         - AccessTokenAuth: []
@@ -286,7 +286,7 @@ components:
           description: 全额退款金额，等于订单下单时保存的应付金额
         failure_reason:
           type: string
-          description: 退款明确失败时的原因
+          description: 退款最终失败时返回「本次退款未完成」，其他状态省略该字段
         refunded_at:
           type: string
           format: date-time

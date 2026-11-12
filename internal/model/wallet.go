@@ -17,6 +17,8 @@ const (
 	WalletLogTypeDeposit      = "deposit"
 	WalletLogTypeOrderPayment = "order_payment"
 	WalletLogTypeOrderIncome  = "order_income"
+	WalletLogTypeRefundDebit  = "order_refund_debit"
+	WalletLogTypeRefundCredit = "order_refund_credit"
 )
 
 type UserWallet struct {

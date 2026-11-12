@@ -1,6 +1,6 @@
 # 站内钱包全额退款设计（任务 #1）
 
-状态：设计稿，待评审。本文只定义规则与方案，不代表已实现。
+本文定义站内钱包全额退款。业务规则见[订单退款 Spec](../requirements/order-refund.md)。
 
 ## 1. 范围
 
@@ -17,8 +17,8 @@
 原因：
 
 - 保持现有 `POST /order/:id/refund` 立即返回、后台处理的契约；
-- 商家余额可能已被提现或消费，异步 worker 可以区分“暂时不足”和“数据异常”；
-- 复用现有 `refund_jobs`、重试、`manual` 状态和监控思路；
+- 商家余额在后台检查。余额不足直接标记失败，数据库错误回滚并保留任务；
+- 复用现有 `refund_jobs`、任务扫描和失败日志；
 - 站内转账没有外部渠道的“结果不明”，不再需要 `query_refund`、`not_found` 和查询次数上限。
 
 备选方案 A 见第 5 节。
@@ -29,27 +29,20 @@
 stateDiagram-v2
     [*] --> Paid: 支付成功
     Paid --> Pending: 买家申请退款
-    Pending --> Processing: worker 领取任务
-    Processing --> Succeeded: 商家扣款 + 买家入账 + 退券成功
-    Processing --> WaitRetry: 商家余额不足
-    WaitRetry --> Processing: 退避后重试
-    WaitRetry --> Manual: 重试次数耗尽
-    Processing --> Manual: 钱包缺失/数据异常
-    Processing --> Failed: 不可重试的规则错误
+    Pending --> Succeeded: 后台原路退款与退券成功
+    Pending --> Failed: 商家余额不足
+    Pending --> Pending: 数据库错误回滚并保留任务
     Succeeded --> [*]
     Failed --> [*]
-    Manual --> Succeeded: 人工补足商家余额后放行
-    Manual --> Failed: 人工终止
 ```
 
 对外状态沿用现有退款枚举：
 
 - `pending`：已受理，未执行；
-- `processing`：worker 已领取；
-- `wait_retry`：商家余额不足，等待重试；
 - `succeeded`：退款完成，订单 `4 已支付 → 5 已退款`；
-- `failed`：不可重试的规则失败；
-- `manual`：需要人工处理。
+- `failed`：商家余额不足，订单保持已支付。
+
+既有退款记录可能仍有 `processing`、`wait_retry` 和 `manual` 状态。前两者如仍有到期任务，则由站内退款执行器处理。已有终态结果保持原值。
 
 ## 4. 资金流
 
@@ -59,27 +52,24 @@ flowchart TD
     B --> C["事务：refund(pending) + refund_job(transfer_refund)"]
     C --> D["返回 pending"]
     D --> E["worker：扫描到期任务"]
-    E --> F["事务：锁 order、refund、商家钱包、买家钱包"]
+    E --> F["事务：锁 refund，复核任务，锁 order"]
     F --> Z{"零元退款？"}
     Z -->|"是"| K
-    Z -->|"否"| G{"商家余额 >= 退款金额？"}
-    G -->|"否"| H["refund=wait_retry<br/>记录 seller_balance_insufficient"]
-    H --> I["指数退避后再试"]
-    I --> E
+    Z -->|"否"| G{"按买家、商家顺序锁钱包<br/>商家余额足够？"}
+    G -->|"否"| H["refund=failed<br/>记录内部原因，删除 job"]
     G -->|"是"| J["正金额退款<br/>商家余额扣减、买家余额增加<br/>写两笔退款流水"]
     J --> K["退优惠券（过期标 expired）"]
     K --> L["refund=succeeded<br/>order 4→5<br/>删除 job"]
     J --> M{"任一步失败"}
-    M -->|"事务回滚"| N["保持原状态<br/>按可重试错误退避"]
+    M -->|"事务回滚"| N["保持原状态<br/>任务留待下一轮扫描"]
 ```
 
 资金动作和退款状态必须在同一个数据库事务里：
 
-1. 正金额退款条件扣商家余额：`WHERE balance >= amount`；
-2. 正金额退款加买家余额；
-3. 正金额退款写商家扣款、买家入账两条 `wallet_logs`，幂等键包含 `refund_id`；
-4. 更新 refund / order；
-5. 删除 refund_job。
+1. 正金额退款按买家、商家顺序用 `SELECT ... FOR UPDATE` 锁住两只钱包，在持锁期间检查商家余额；
+2. 余额足够时，扣减商家余额、增加买家余额，并写入两条 `wallet_logs`，幂等键包含 `refund_id`。钱包锁持有至事务结束；
+3. 更新 refund / order；
+4. 删除 refund_job。
 
 任一步失败整体回滚，不允许“买家已到账、退款状态没变”或反向情况。
 
@@ -89,10 +79,10 @@ flowchart TD
 |---|---|---|
 | 入口行为 | 申请时立即转账 | 先受理，worker 转账 |
 | 一致性 | 强，HTTP 成功即退款完成 | 最终一致，状态可查询 |
-| 商家余额不足 | 直接拒绝申请 | wait_retry，必要时 manual |
-| 对现有代码 | 基本废弃 worker/mock 渠道 | 复用 worker 和任务表，删除 query/mock 渠道 |
+| 商家余额不足 | 直接拒绝申请 | 后台标记 `failed` |
+| 对现有代码 | 基本废弃 worker/mock 渠道 | 复用 worker 和任务表，新退款使用站内转账任务 |
 | 接口契约 | 需要改返回语义 | 保持 pending 契约 |
-| 失败补偿 | 依赖请求重试 | 任务重试 + manual |
+| 失败补偿 | 依赖请求重试 | 数据库错误回滚并保留任务 |
 | 适用 | 余额一定充足、要求即时到账 | 商家余额可能不足、需要异步处理 |
 
 选择 B。若业务要求“申请即到账”，再单独评估 A；不能同时保留两套语义。
@@ -108,10 +98,9 @@ flowchart TD
 
 ### 6.2 商家余额不足
 
-- worker 用条件更新扣商家余额；
+- worker 锁定钱包后检查商家余额，余额足够才扣款；
 - 余额不足时不加买家余额、不写成功流水、不改订单状态；
-- refund 进入 `wait_retry`，指数退避重试；
-- 超过重试上限进入 `manual`，等待人工补足或平台决策；
+- 后台直接将退款标记为 `failed`，结束该任务。重复申请返回已有退款；
 - **不允许**把商家余额扣成负数，也**不允许**平台自动垫资（本期不做）。
 
 ### 6.3 零元订单
@@ -130,7 +119,7 @@ flowchart TD
 ### 6.5 优惠券
 
 - 券仍由当前订单占用：退回，未过期 `unused`，已过期 `expired`；
-- 券已被其他订单使用或已经退回：不覆盖，记录并转 `manual` 或按数据异常处理；
+- 券已被其他订单使用或已经退回：按现有退券规则保留该券当前状态；
 - 零元订单使用券的，也按同一规则退回。
 
 ### 6.6 重复/并发
@@ -147,52 +136,36 @@ flowchart TD
 - 再根据退款当前状态追加一个事件；
 - 不保留历史重试记录。
 
-当前代码把 `wait_retry` 映射成 `refund_processing`，用户看到的是“退款处理中”。下表是待评审的状态映射，买家侧统一使用可公开的退款状态与提示。
-
-建议映射：
+买家侧使用以下状态映射：
 
 | refund.status | timeline event | 含义 |
 |---|---|---|
-| `pending` / `processing` | `refund_processing` | 正常处理中 |
-| `wait_retry` | `refund_wait_retry` | 执行异常，退避后重试 |
+| `pending` / `processing` / `wait_retry` | `refund_processing` | 退款处理中 |
 | `manual` | `refund_manual` | 需要人工处理 |
 | `failed` | `refund_failed` | 终态失败 |
 | `succeeded` | `refund_succeeded` | 退款成功 |
 
 内部保留余额不足、重试耗尽和数据异常等原因供排查。买家可见的时间线和 `reason` 使用通用退款提示，最终失败时订单详情的 `refund.failure_reason` 返回「本次退款未完成」。商家余额和余额不足原因仅在内部使用。
 
-本期只展示“当前异常状态 + 最近原因”，不做每一次重试的完整历史；如果以后要展示完整链路，需要新增 `refund_events` 事件表，而不是继续从当前状态反推。
+时间线展示当前退款状态。完整的重试历史留待独立设计。
 
 ## 7. 边界例子
 
 | # | 场景 | 期望 |
 |---|---|---|
 | 1 | 订单 100 元，商家余额 100 | 商家 0，买家 +100，refund=succeeded，order=5 |
-| 2 | 订单 100 元，商家余额 30 | refund=wait_retry，两方余额不变；timeline 显示 `refund_wait_retry` |
-| 3 | 商家余额不足且重试耗尽 | refund=manual；timeline 显示 `refund_manual`，等待人工补足/平台决策 |
+| 2 | 订单 100 元，商家余额 30 | refund=failed，双方余额不变，订单仍为已支付；买家看到「本次退款未完成」 |
+| 3 | 写入退款流水失败 | 余额和状态回滚，任务保留供后续扫描 |
 | 4 | 零元订单（券全额抵扣） | 双方余额不变，不写钱包流水，refund=succeeded，券按规则退回/过期 |
 | 5 | 同一订单并发两次申请 | 只有一条 refund、一次转账、一次退券 |
 | 6 | 已退款订单再次申请 | 返回已有退款，不重复转账 |
-| 7 | 商家钱包记录缺失 | refund=manual，不扣买家、不写半套流水 |
+| 7 | 商家钱包记录缺失 | 本次事务回滚，保留待执行任务和内部排查信息 |
 | 8 | 退款时券已过期 | 券标 expired，不回到 unused |
-| 9 | 退款时券已被其他订单使用 | 不覆盖该券，记录异常并转 manual |
+| 9 | 退款时券已被其他订单使用 | 保留该券当前状态 |
 | 10 | 退款成功后库存 | 不返还；由退货流程处理 |
 
-## 8. 与原模拟外部渠道需求的差异
+## 8. 任务类型与旧记录
 
-需要变更的条款：
-
-- 删除 `create_refund/query_refund` 双任务类型，改为 `transfer_refund`；
-- 删除“渠道结果不明”“query 查无此退款”“查询次数耗尽”；
-- 删除 `refund_channel` 的 mock Create/Query 语义；
-- 新增“商家余额不足”这一业务分支，对应 `wait_retry/manual`；
-- 退款幂等从“渠道 refund_id”转为“refund_id + 钱包流水幂等键”；
-- 状态图增加 `wait_retry/manual` 的资金原因，但不再有渠道超时原因；
-- 对账从“渠道状态 vs 本地状态”改为“商家扣款 + 买家入账 + refund 状态”三方一致。
-
-## 9. 待评审问题
-
-1. 商家余额不足时，产品是否接受“买家等待 + manual”，还是要求平台垫资？
-2. 是否允许商家负余额？本文选择不允许。
-3. 如何用现有流水结构关联退款 ID 并保证重复执行只写入一组流水？
-4. 方案 B 是否保留现有 `pending` 接口契约？
+- 新申请使用 `transfer_refund`，由同一数据库事务完成资金与退款状态更新。
+- 已入队的 `create_refund` 和 `query_refund` 到期后使用同一站内退款执行器。退款行锁下复核终态和任务到期时间，已结束的退款不再动账。
+- 正金额退款流水的幂等键为 `order:refund:<refund_id>:debit` 和 `order:refund:<refund_id>:credit`。

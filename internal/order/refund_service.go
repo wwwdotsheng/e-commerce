@@ -52,7 +52,7 @@ func (svc *Service) ApplyRefund(ctx context.Context, userID, orderID uuid.UUID) 
 		}
 		job := &model.RefundJob{
 			RefundID:  refund.ID,
-			JobType:   model.RefundJobTypeCreate,
+			JobType:   model.RefundJobTypeTransfer,
 			NextRunAt: time.Now(),
 		}
 		if err := svc.repo.CreateRefundJob(txCtx, job); err != nil {

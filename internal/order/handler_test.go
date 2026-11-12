@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,6 +164,49 @@ func TestGetOrderReturnsServiceError(t *testing.T) {
 	if got.Code != errno.ErrNotFoundRecord.FullCode() {
 		t.Fatalf("response code = %q, want %q", got.Code, errno.ErrNotFoundRecord.FullCode())
 	}
+}
+
+func TestGetOrderDetailHidesInternalRefundFailureReason(t *testing.T) {
+	r, service := newHandlerTestRouter()
+	orderID, refundID := uuid.New(), uuid.New()
+	now := time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
+	service.order = &model.Order{
+		ID: orderID, UserID: service.accountID, Status: model.OrderStatusPaid,
+		PayableAmount: decimal.NewFromInt(100), PaidAt: &now, CreatedAt: now, UpdatedAt: now,
+	}
+	service.refund = &model.Refund{
+		ID: refundID, OrderID: orderID, BuyerID: service.accountID, Status: model.RefundStatusFailed,
+		Amount: decimal.NewFromInt(100), FailureReason: "seller wallet balance 30.00 is insufficient",
+		CreatedAt: now, UpdatedAt: now,
+	}
+
+	got := performHandlerRequest(t, r, http.MethodGet, "/orders/"+orderID.String(), "")
+	if got.Code != errno.OK.FullCode() {
+		t.Fatalf("response code = %q, want %q", got.Code, errno.OK.FullCode())
+	}
+	for _, privateText := range []string{"seller wallet balance", "30.00"} {
+		if strings.Contains(string(got.Data), privateText) {
+			t.Fatalf("order detail exposes %q: %s", privateText, got.Data)
+		}
+	}
+
+	var detail DetailResponse
+	if err := json.Unmarshal(got.Data, &detail); err != nil {
+		t.Fatalf("decode detail response: %v", err)
+	}
+	if detail.Status != int(model.OrderStatusPaid) {
+		t.Fatalf("order status = %d, want %d", detail.Status, model.OrderStatusPaid)
+	}
+	if detail.Refund == nil || detail.Refund.ID != refundID.String() ||
+		detail.Refund.Status != string(model.RefundStatusFailed) || detail.Refund.FailureReason != "本次退款未完成" {
+		t.Fatalf("unexpected refund in order detail: %+v", detail.Refund)
+	}
+	for _, event := range detail.Timeline {
+		if event.Type == "refund_failed" && event.RefundID == refundID.String() {
+			return
+		}
+	}
+	t.Fatalf("timeline missing refund_failed for %s: %+v", refundID, detail.Timeline)
 }
 
 func TestPayOrderPassesIdentityAndReturnsOrder(t *testing.T) {

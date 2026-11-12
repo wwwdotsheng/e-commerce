@@ -78,11 +78,15 @@ func FormatRefund(r *model.Refund) *RefundDetailResponse {
 		s := r.RefundedAt.Format(time.RFC3339)
 		refundedAt = &s
 	}
+	failureReason := ""
+	if r.Status == model.RefundStatusFailed {
+		failureReason = "本次退款未完成"
+	}
 	return &RefundDetailResponse{
 		ID:            r.ID.String(),
 		Status:        string(r.Status),
 		Amount:        r.Amount,
-		FailureReason: r.FailureReason,
+		FailureReason: failureReason,
 		RefundedAt:    refundedAt,
 		UpdatedAt:     r.UpdatedAt.Format(time.RFC3339),
 	}

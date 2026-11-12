@@ -10,8 +10,10 @@ import (
 type RefundJobType string
 
 const (
-	RefundJobTypeCreate RefundJobType = "create_refund"
-	RefundJobTypeQuery  RefundJobType = "query_refund"
+	// Older queued jobs use these types. The worker processes them as wallet refunds.
+	RefundJobTypeCreate   RefundJobType = "create_refund"
+	RefundJobTypeQuery    RefundJobType = "query_refund"
+	RefundJobTypeTransfer RefundJobType = "transfer_refund"
 )
 
 type RefundJob struct {

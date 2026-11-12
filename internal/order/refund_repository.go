@@ -66,11 +66,22 @@ func (repo *Repository) MarkOrderRefunded(ctx context.Context, orderID uuid.UUID
 func (repo *Repository) FindDueRefundJobs(ctx context.Context, limit int) ([]*model.RefundJob, error) {
 	var jobs []*model.RefundJob
 	err := repo.GetDB(ctx).
-		Where("next_run_at <= now()").
+		Where("next_run_at <= now() AND job_type IN ?", []model.RefundJobType{
+			model.RefundJobTypeTransfer, model.RefundJobTypeCreate, model.RefundJobTypeQuery,
+		}).
 		Order("next_run_at").
 		Limit(limit).
 		Find(&jobs).Error
 	return jobs, err
+}
+
+func (repo *Repository) isRefundJobDue(ctx context.Context, job *model.RefundJob) (bool, error) {
+	var count int64
+	err := repo.GetDB(ctx).Model(&model.RefundJob{}).
+		Where("id = ? AND refund_id = ? AND job_type = ? AND next_run_at <= now()",
+			job.ID, job.RefundID, job.JobType).
+		Count(&count).Error
+	return count == 1, err
 }
 
 type orderRefundRow struct {
@@ -124,42 +135,6 @@ LIMIT 1`
 	}
 	return &row.Order, refund, nil
 }
-func (repo *Repository) GetRefundByID(ctx context.Context, refundID uuid.UUID) (*model.Refund, error) {
-	var r model.Refund
-	if err := repo.GetDB(ctx).First(&r, "id = ?", refundID).Error; err != nil {
-		return nil, err
-	}
-	return &r, nil
-}
-
-func (repo *Repository) MarkRefundCreateAttempt(ctx context.Context, jobID uuid.UUID) error {
-	return repo.markRefundJobAttempt(ctx, jobID, "create_attempts")
-}
-
-func (repo *Repository) MarkRefundQueryAttempt(ctx context.Context, jobID uuid.UUID) error {
-	return repo.markRefundJobAttempt(ctx, jobID, "query_attempts")
-}
-
-func (repo *Repository) markRefundJobAttempt(ctx context.Context, jobID uuid.UUID, column string) error {
-	switch column {
-	case "create_attempts", "query_attempts":
-	default:
-		return fmt.Errorf("unsupported attempt column: %s", column)
-	}
-	updates := map[string]interface{}{
-		"next_run_at": time.Now().Add(refundWorkerRecoveryDelay),
-		"updated_at":  time.Now(),
-		column:        gorm.Expr(column + " + 1"),
-	}
-	return repo.GetDB(ctx).Model(&model.RefundJob{}).Where("id = ?", jobID).Updates(updates).Error
-}
-
-func (repo *Repository) SetRefundProcessing(ctx context.Context, refundID uuid.UUID) error {
-	return repo.GetDB(ctx).Model(&model.Refund{}).
-		Where("id = ? AND status IN ?", refundID, []model.RefundStatus{model.RefundStatusPending, model.RefundStatusWaitRetry}).
-		Update("status", model.RefundStatusProcessing).Error
-}
-
 func (repo *Repository) UpdateRefundStatus(ctx context.Context, refundID uuid.UUID, status model.RefundStatus, reason string, refundedAt *time.Time) error {
 	updates := map[string]interface{}{
 		"status":         status,
@@ -169,15 +144,6 @@ func (repo *Repository) UpdateRefundStatus(ctx context.Context, refundID uuid.UU
 		updates["refunded_at"] = *refundedAt
 	}
 	return repo.GetDB(ctx).Model(&model.Refund{}).Where("id = ?", refundID).Updates(updates).Error
-}
-
-func (repo *Repository) RescheduleRefundJob(ctx context.Context, jobID uuid.UUID, jobType model.RefundJobType, nextRunAt time.Time, lastError string) error {
-	return repo.GetDB(ctx).Model(&model.RefundJob{}).Where("id = ?", jobID).Updates(map[string]interface{}{
-		"job_type":    jobType,
-		"next_run_at": nextRunAt,
-		"last_error":  lastError,
-		"updated_at":  time.Now(),
-	}).Error
 }
 
 func (repo *Repository) DeleteRefundJob(ctx context.Context, jobID uuid.UUID) error {
