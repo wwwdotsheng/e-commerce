@@ -63,7 +63,7 @@ unit:
     - go version
     - go mod download
     - go vet ./...
-    - go test -race ./internal/auth ./internal/config ./internal/order
+    - go test -race ./internal/app ./internal/auth ./internal/config ./internal/order
 
 # ─────────────────────────────────────────────────────────────
 # 2. 集成测试（testcontainers 起 PG/Redis/RabbitMQ）
