@@ -20,7 +20,7 @@ Persistent volumes use `local-path`. Preserve the existing PVCs and Secrets.
 Elasticsearch is not deployed; product search is unavailable until it is added.
 The API never changes the database schema at startup. Apply reviewed Atlas
 migrations separately before rolling out an application version that needs them;
-see [the database migration guide](../docs/database-migrations.md).
+see [the database migration steps](../docs/design/configuration.md#数据库迁移).
 
 ## Build and update
 
@@ -66,7 +66,7 @@ so also update the overlay tag to keep Git and the cluster consistent.
 
 API deployment snapshot before this update: `tmp/k8s-testfix-20261012/deployment-before.yaml`.
 
-See [interface and integration tests](../docs/testing.md) for business verification.
+See [interface and integration tests](../docs/design/testing.md) for business verification.
 
 ## Automatic product verification
 

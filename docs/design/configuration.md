@@ -44,13 +44,23 @@ app.business_time_zone 用于解释请求里不带时区的“本地墙上时间
 与 database.time_zone（数据库会话时区）是两个独立设置。部署时进程时区 TZ 应与它一致，
 启动日志会在两者不一致时告警；携带时区偏移的 RFC3339 时间不受该配置影响。
 
+## 数据库迁移
+
+应用启动前，安装 Atlas CLI 并将 `DATABASE_URL` 指向目标 PostgreSQL 数据库。在仓库根目录执行：
+
+```bash
+(cd scripts && atlas migrate apply --env gorm)
+```
+
+迁移成功后再启动应用。
+
 ## Docker Compose
 
 需要 Docker Compose 2.24+（支持可选 env_file）和 Docker。
 
 1. 将 .env.example 复制为 .env；将 JWT 示例值替换为随机签名密钥。
 2. 填写数据库和 RabbitMQ 密码；同一变量分别注入应用和对应依赖容器。
-3. 先启动 PostgreSQL，再按数据库迁移指南运行 Atlas 迁移。
+3. 先启动 PostgreSQL，再按[数据库迁移](#数据库迁移)执行迁移。
 4. 执行 docker compose up -d --build --wait。
 5. 检查 http://localhost:10000/ready 和 /swagger。
 

@@ -6,7 +6,7 @@
 ## 结论摘要（5 行内）
 
 1. **P0 = 0**：核心资金路径「锁订单行 → 校验状态/截止时间 → 条件扣款 → 等额入账 → 置已支付」在**同一事务、同一连接**内完成，未发现重复扣款、丢失更新、单边记账或支付/超时双向竞态导致的资金不一致。
-2. **P1 = 1**：`wallet_logs.idempotency_key` 是**全局唯一**命名空间，被系统键（`order:<id>:payment|income`）与**用户可控的充值幂等键**共用；一旦冲突，兜底路径退化为**未映射的 500**，订单永久不可支付且无恢复手段（`docs/order-payment.md:18` 把它描述成"幂等兜底"，与实际行为不符）。
+2. **P1 = 1**：`wallet_logs.idempotency_key` 是**全局唯一**命名空间，被系统键（`order:<id>:payment|income`）与**用户可控的充值幂等键**共用；一旦冲突，兜底路径退化为**未映射的 500**，订单永久不可支付且无恢复手段（`docs/requirements/order-payment.md:18` 把它描述成"幂等兜底"，与实际行为不符）。
 3. **P2 = 8**：集中在防御性校验、错误码映射、金额类型、账本可追溯性、契约文档与滚动发布顺序，均不阻断上线但会带来误导性告警/对账困难。
 4. 三条审计线的资金侧结论：锁顺序一致且无死锁环；买家扣款与商家入账**恒等**；`payable_amount` 快照语义正确且历史订单已回填，**不存在 NULL 金额白拿订单的窗口**。
 5. 未执行 `tests/` 下的 Testcontainers 集成测试（本机无 Docker）；并发/竞态结论由代码路径推理 + 现有用例对照得出，见文末「验证记录」。
@@ -33,7 +33,7 @@
 
 - 现象：`HandleOrderTimeout` 锁定订单后仅判断 `status == processing` 就关单并回补库存/优惠券（`internal/order/repository.go:159-183`），完全不比对 `payment_deadline`。当前 `payment_deadline = now + mqCfg.TTLMs`（`internal/order/service.go:129`）与队列 `x-message-ttl` 同源（`internal/order/repository.go:59-63`），所以正常运行不会误关；但一旦通过 RabbitMQ **policy** 改 TTL、人工重投超时消息、或未来新增"手动关单/补发消息"入口，就会把**仍可支付**的订单提前关闭并释放库存与优惠券，买家随后只能得到 `A05102`。
 - 代码位置：`internal/order/repository.go:159-183`；`internal/order/service.go:198-226`（先关单再还原库存/券）；`internal/order/mq_handler.go:85-115`（4 次重试，重投不加时间约束）。
-- 依据：代码路径 + `docs/order-payment.md:30`（"关闭订单由现有超时流程负责"但未声明时序约束）。
+- 依据：代码路径 + `docs/requirements/order-payment.md:30`（"关闭订单由现有超时流程负责"但未声明时序约束）。
 - 建议修复：在 `HandleOrderTimeout` 内加 `if time.Now().Before(o.PaymentDeadline) { return nil, nil }`（并且仅当状态与截止时间同时满足才关单），使截止时间成为唯一事实来源，MQ 只负责"触发"。
 - 影响范围：业务规则违背（提前关单、库存/券被过早释放）；无资金损失。
 
@@ -41,7 +41,7 @@
 
 - 现象：`UserWallet.Balance` / `WalletLog.Amount` / `Order.PayableAmount` 均为 `float64`，列为 `numeric(16,2)`；扣款条件 `WHERE balance >= ?` 与 `user_wallets.balance - ?` 中参数是 float8，Postgres 会把 numeric 侧隐式提升为 float8 再比较/运算（`internal/wallet/repository.go:97-102`）。在 2 位小数、金额 < 2^53 分的现实区间内比较是精确的（两侧都是同一小数的最短表示舍入），但列类型允许到 10^14 量级，超过 2^53 分后会出现分位漂移；同时该写法无法使用 `balance` 上的任何索引（PK 命中，暂无影响）。
 - 代码位置：`internal/model/wallet.go:21-40`；`internal/model/order.go:35-55`；`internal/wallet/repository.go:97-102,128-133`；`migrations/20260507035237.sql:49-54`。
-- 依据：列定义 + 表达式写法；`docs/order-payment.md:9` 声明的"条件更新"本身是原子的（这一点无问题）。
+- 依据：列定义 + 表达式写法；`docs/requirements/order-payment.md:9` 声明的"条件更新"本身是原子的（这一点无问题）。
 - 建议修复：金额统一改为 `int64`（分）或 `decimal`/字符串类型，SQL 侧显式 `$1::numeric`；至少把 `float64` 参数显式转换成 numeric 以免隐式提升。
 - 影响范围：理论精度风险与长期可维护性；当前不会造成实际账目偏差（金额恒 2 位小数且买卖两侧等额）。
 
@@ -63,7 +63,7 @@
 
 **P2-5 零元订单不产生任何流水，"零元已支付"与"流水缺失"无法区分**
 
-- 现象：`PayableAmount <= 0` 时跳过扣款与入账（`internal/order/service.go:266-276`），订单直接置 4，不写任何 `wallet_logs`（`tests/order_payment_test.go:259-287` 明确了该行为）。与文档一致（`docs/order-payment.md:41`），但对账时"零元已支付订单没有流水"与"流水写失败/被删"在数据上不可区分。
+- 现象：`PayableAmount <= 0` 时跳过扣款与入账（`internal/order/service.go:266-276`），订单直接置 4，不写任何 `wallet_logs`（`tests/order_payment_test.go:259-287` 明确了该行为）。与文档一致（`docs/requirements/order-payment.md:41`），但对账时"零元已支付订单没有流水"与"流水写失败/被删"在数据上不可区分。
 - 代码位置：`internal/order/service.go:266-276`；`internal/wallet/repository.go:83-85,114-116`（`amount <= 0` 直接返回）。
 - 依据：代码路径 + 上述用例。
 - 建议修复：零元订单写一条 `amount = 0` 的 `order_payment`/`order_income` 标记流水（或 `type=order_free`），保持"每个已支付订单至少有账本记录"的不变式。
@@ -71,7 +71,7 @@
 
 **P2-6 契约文档缺口：OpenAPI 未声明"仅 buyer 可调用"，`updated_at` 的 `format: date-time` 与实际返回格式不符**
 
-- 现象：① 路由确实只有买家可用（`internal/app/bootstrap.go:161` + `internal/middleware/auth.go:72-81`，非买家得到 `A02100`），但 OpenAPI 的 `/order/{id}/pay` 只写了 `AccessTokenAuth`（`internal/app/openapi.yaml:421-447`），未说明角色要求，也未在错误清单里列 `A02100`；`docs/order-payment.md:23-28` 同样缺少该行。② 订单详情/支付响应中的 `updated_at` 在 spec 里声明 `type: string, format: date-time`（`internal/app/openapi.yaml:985-987`），实际输出是 `"2006-01-02 15:04:05"`（无时区、非 RFC3339，`internal/order/response.go:74`），严格客户端解析会失败；`created_at` 同样是无时区字符串，但因 spec 未声明 format 而"恰好合规"。
+- 现象：① 路由确实只有买家可用（`internal/app/bootstrap.go:161` + `internal/middleware/auth.go:72-81`，非买家得到 `A02100`），但 OpenAPI 的 `/order/{id}/pay` 只写了 `AccessTokenAuth`（`internal/app/openapi.yaml:421-447`），未说明角色要求，也未在错误清单里列 `A02100`；`docs/requirements/order-payment.md:23-28` 同样缺少该行。② 订单详情/支付响应中的 `updated_at` 在 spec 里声明 `type: string, format: date-time`（`internal/app/openapi.yaml:985-987`），实际输出是 `"2006-01-02 15:04:05"`（无时区、非 RFC3339，`internal/order/response.go:74`），严格客户端解析会失败；`created_at` 同样是无时区字符串，但因 spec 未声明 format 而"恰好合规"。
 - 代码位置：`internal/app/openapi.yaml:421-447,969-987`；`internal/order/response.go:41-77`；`internal/app/bootstrap.go:161`；`internal/middleware/auth.go:72-81`。
 - 依据：路由/中间件代码 + 响应格式化代码与 spec 对照。
 - 建议修复：在 pay 描述的 security/description 中补 "仅买家"、错误清单补 `A02100`；`updated_at`/`created_at` 改为 RFC3339（或把 spec 的 format 去掉）。
@@ -116,9 +116,9 @@
 
 12. **仅买家可支付**：路由挂了 `RequireUserType(model.UserTypeBuyer)`（`internal/app/bootstrap.go:161`），且该中间件同时校验 `status == active`（`internal/middleware/auth.go:75`），pending/disabled 账号同样被拒（`A02100`）。
 13. **他人订单返回 `A00002` 且不泄露存在性**：锁查询带 `id = ? AND user_id = ?`（`internal/order/repository.go:131-133`），找不到统一映射为 `ErrNotFoundRecord`（`A00002`），与"订单不存在"不可区分；用例 `tests/order_payment_test.go:199-218` 断言对方余额不变。
-14. **错误码与 OpenAPI/文档三方一致**：`A00002` / `A03102` / `A05102` / `A05103` 与 `pkg/errno/code.go:20-31`、`internal/app/openapi.yaml:439-443`、`docs/order-payment.md:23-28` 完全对应；成功码 `000000` 与 `errno.OK.FullCode()` 一致（顺带说明：其他旧接口文档写的 `00000` 是历史笔误，新接口写对了）。
+14. **错误码与 OpenAPI/文档三方一致**：`A00002` / `A03102` / `A05102` / `A05103` 与 `pkg/errno/code.go:20-31`、`internal/app/openapi.yaml:439-443`、`docs/requirements/order-payment.md:23-28` 完全对应；成功码 `000000` 与 `errno.OK.FullCode()` 一致（顺带说明：其他旧接口文档写的 `00000` 是历史笔误，新接口写对了）。
 15. **响应不泄漏非买家信息**：支付响应复用 `OrderDetailResponse`（`internal/order/response.go:41-77`），只含订单快照与状态字段（含 `seller_id` 这类订单本身已包含的标识），**不含任何钱包/商家余额**；余额只能通过 `GET /wallet/balance` 查自己（`internal/wallet/handler.go:60-70`）。`APP_APP_EXPOSE_DEV_MSG=false` 在配置文件与 k8s ConfigMap 中均为关闭（`configs/config.yaml:11`、`k8s/app/configmap.yaml:16`），不会回传 SQL/原始错误。
-16. **重复支付的状态码语义合理**：返回 `200 + 000000` + 订单详情（含 `paid_at`），客户端可据 `paid_at`/`status` 判断"此前已支付"，与 `docs/order-payment.md:15-19` 一致；如需显式区分，建议在 `data` 中加 `already_paid` 标志（非缺陷）。
+16. **重复支付的状态码语义合理**：返回 `200 + 000000` + 订单详情（含 `paid_at`），客户端可据 `paid_at`/`status` 判断"此前已支付"，与 `docs/requirements/order-payment.md:15-19` 一致；如需显式区分，建议在 `data` 中加 `already_paid` 标志（非缺陷）。
 17. **路由无冲突**：`GET /order/list` 与 `GET /order/:id`、`POST /order/create` 与 `POST /order/:id/pay` 在 gin v1.11 下静态段与参数段可并存（`internal/app/bootstrap.go:157-162`），不会启动 panic；`/order/create` 仍优先命中静态路由。
 
 ## 验证记录

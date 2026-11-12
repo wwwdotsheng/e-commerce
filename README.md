@@ -21,7 +21,7 @@
 
 1. 复制 .env.example 为 .env，替换 JWT 签名密钥并填写依赖密码。
 2. 启动 PostgreSQL：docker compose up -d --wait postgres。
-3. 安装 Atlas CLI，并按数据库迁移指南配置 DATABASE_URL、执行待应用迁移。
+3. 按[数据库迁移](docs/design/configuration.md#数据库迁移)配置 `DATABASE_URL` 并应用待执行的迁移。
 4. 启动应用及其他依赖：docker compose up -d --build --wait。
 
 API： http://localhost:10000
@@ -38,7 +38,7 @@ APP_ 环境变量可覆盖所有配置字段，包括 YAML 未出现的字段。
 Docker Compose 使用 YAML 配置文件；Kubernetes 用 ConfigMap 注入普通 APP_* 环境变量、Secret 注入敏感值，不挂载应用配置文件。
 密码与 JWT Secret 没有代码默认值；错误或未知配置会阻止启动。
 
-配置项、两种部署方式和兼容说明见 [配置与部署](docs/configuration.md)。数据库 schema 的版本管理和部署步骤见[数据库迁移指南](docs/database-migrations.md)。
+配置项和部署方式见[配置与部署](docs/design/configuration.md)。
 
 ## 项目结构
 
@@ -105,7 +105,7 @@ go test ./tests/... -v
 
 CI 在 GitLab CI 上执行（`test` → `build` 推镜像），开启 `--race` 竞态检测与 `--randomize-all` 用例乱序执行。
 
-接口验收、并发/超时回归、Docker 测试脚本与 CI 报告说明见 [测试说明](docs/testing.md)。
+接口验收、并发/超时回归、Docker 测试脚本与 CI 报告说明见 [测试说明](docs/design/testing.md)。
 
 ## 可观测性
 
@@ -142,6 +142,6 @@ MIT
 
 认证使用 43 字符的安全随机令牌，由 Redis 保存会话并校验有效期。由 JWT 升级后需重新登录。`APP_AUTH_TOKEN_SECRET` 仅保留配置兼容性，不再参与鉴权；访问令牌和刷新令牌的有效期仍可分别配置。
 
-商家账号审核通过后即可直接发布商品，无需独立创建店铺；商品及订单通过 `seller_id` 关联商家。商家资料使用 `seller_name`、`application_note`，详见 `docs/user-registration-review.md`。
+商家账号审核通过后即可直接发布商品，无需独立创建店铺；商品及订单通过 `seller_id` 关联商家。商家资料使用 `seller_name`、`application_note`，详见 `docs/requirements/user-registration-review.md`。
 
-订单支付使用买家账户余额，支付成功即把订单金额记入商家余额；重复支付、余额不足、超时后的处理规则见 `docs/order-payment.md`。
+订单支付使用买家账户余额，支付成功即把订单金额记入商家余额；重复支付、余额不足、超时后的处理规则见 `docs/requirements/order-payment.md`。
